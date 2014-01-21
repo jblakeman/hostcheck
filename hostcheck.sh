@@ -182,13 +182,13 @@ haversine ()
 }
 info_state ()
 {
-	printf "\t$col${underline}Country$end: ${country[$p]}\n"
-	printf "\t$col${underline}Region$end: ${city[$p]}, ${state[$p]}\n"
-	printf "\t$col${underline}Connection$end: ${speed[$p]}\n"
-	printf "\t$col${underline}Average RTT$end: $col$bold${avg_rtt[$p]}$end ms\n"
-	printf "\t$col${underline}Mean RTT Deviation$end: $col$bold${jitter[$p]}$end ms\n"
-	printf "\t$col${underline}Average speed -> me$end: $col$bold${avg_mpm[$p]}$end miles/ms\n"
-	printf "\t$col${underline}Total Distance -> Players$end: $col$bold${total_dist[$p]}$end miles\n"
+	printf "\t$col$teal${underline}Country$end: ${country[$p]}\n"
+	printf "\t$col$teal${underline}Region$end: ${city[$p]}, ${state[$p]}\n"
+	printf "\t$col$teal${underline}Connection$end: ${speed[$p]}\n"
+	printf "\t$col$teal${underline}Average RTT$end: $col$bold${avg_rtt[$p]}$end ms\n"
+	printf "\t$col$teal${underline}Mean RTT Deviation$end: $col$bold${jitter[$p]}$end ms\n"
+	printf "\t$col$teal${underline}Average speed -> me$end: $col$bold${avg_mpm[$p]}$end miles/ms\n"
+	printf "\t$col$teal${underline}Total Distance -> Players$end: $col$bold${total_dist[$p]}$end miles\n"
 }
 info_call ()
 {
@@ -199,12 +199,12 @@ info_call ()
 		elif [ $p -lt ${#client[@]} ]; then
 			printf "\n\n$col${bold}Player #$p$end\n\n"
 			info_state
-			printf "\t$col${underline}Distance -> Host$end: $col$bold${host_dist[$((p-1))]}$end miles\n"
+			printf "\t$col$teal${underline}Distance -> Host$end: $col$bold${host_dist[$((p-1))]}$end miles\n"
 		else
-			printf "\nOverall RTT Deviation: $col$bold$avg_jitter$end ms\n"
-			printf "Distance -> Host: $col$bold${host_dist[$((p-1))]}$end miles\n"
-			printf "Total Distance -> Players: $col$bold${total_dist[$p]}$end miles\n"
-			printf "Average Speed -> Players: $col$bold$avg_avg_mpm$end miles/ms\n"
+			printf "\nOverall RTT Deviation: $col$teal$bold$avg_jitter$end ms\n"
+			printf "Distance -> Host: $col$teal$bold${host_dist[$((p-1))]}$end miles\n"
+			printf "Total Distance -> Players: $col$teal$bold${total_dist[$p]}$end miles\n"
+			printf "Average Speed -> Players: $col$teal$bold$avg_avg_mpm$end miles/ms\n"
 		fi
 	done
 }
