@@ -8,8 +8,8 @@ CAP=/usr/sbin/tcpdump
 GEO=/usr/bin/geoiplookup
 shm=/dev/shm/host
 null=/dev/null
-game_cap=$shm/game_cap.pcap
-game_cap1=$shm/game_cap1.pcap
+g_cap=$shm/g_cap.pcap
+g_cap1=$shm/g_cap1.pcap
 location=$shm/geo
 if [ $EUID -ne 0 ]; then
 	printf "\nThis script must be run as root\n\n"
@@ -28,17 +28,17 @@ done < <($CONN -L -p udp 2>$null)
 track ()
 {
 	local i max
-	conn_pack=()
+	c_pack=()
 	while read -a line; do
 		if [[ ${line[@]} =~ sport=3074 ]] && ! [[ ${line[@]} =~ src=65.59. ]] && ! [[ ${line[@]} =~ src=65.55. ]]; then
 			for i in ${line[@]}; do
-				[[ $i =~ packets=[0-9]+ ]] && conn_pack+=(${BASH_REMATCH:8})
+				[[ $i =~ packets=[0-9]+ ]] && c_pack+=(${BASH_REMATCH:8})
 			done
 		fi
 	done < <($CONN -L -p udp 2>$null)
-	[[ $1 == count ]] && players=${#conn_pack[@]}
-	[[ $1 == pack ]] && packets=$(max=${conn_pack[0]}
-					for i in ${conn_pack[@]/${conn_pack[0]}/}; do
+	[[ $1 == count ]] && players=${#c_pack[@]}
+	[[ $1 == pack ]] && packets=$(max=${c_pack[0]}
+					for i in ${c_pack[@]/${c_pack[0]}/}; do
 						if [ $i -gt $max ]; then
 							max=$i
 						fi
@@ -46,7 +46,7 @@ track ()
 					echo $max)
 }
 if ! [[ ${live[0]} ]]; then
-	printf "\nYou are not connected to Xbox Live\n\n"
+	printf "You are not connected to Xbox Live\n"
 	exit 0
 else
 	if [[ ${live[1]} == ${live[4]} ]]; then
@@ -73,7 +73,7 @@ proc_kill ()
 control_c ()
 {
 	local i
-	printf "\r\nScript interrupted\n\n"
+	printf "\rScript interrupted\n"
 	rm -rf $shm
 	for i in ${pids[@]}; do
 		proc_kill $i
@@ -182,29 +182,29 @@ haversine ()
 }
 info_state ()
 {
-	printf "\t$col$teal${underline}Country$end: ${country[$p]}\n"
-	printf "\t$col$teal${underline}Region$end: ${city[$p]}, ${state[$p]}\n"
-	printf "\t$col$teal${underline}Connection$end: ${speed[$p]}\n"
-	printf "\t$col$teal${underline}Average RTT$end: $col$bold${avg_rtt[$p]}$end ms\n"
-	printf "\t$col$teal${underline}Mean RTT Deviation$end: $col$bold${jitter[$p]}$end ms\n"
-	printf "\t$col$teal${underline}Average speed -> me$end: $col$bold${avg_mpm[$p]}$end miles/ms\n"
-	printf "\t$col$teal${underline}Total Distance -> Players$end: $col$bold${total_dist[$p]}$end miles\n"
+	printf "\t$col${underline}Country$end: ${country[$p]}\n"
+	printf "\t$col${underline}Region$end: ${city[$p]}, ${state[$p]}\n"
+	printf "\t$col${underline}Connection$end: ${speed[$p]}\n"
+	printf "\t$col${underline}Average RTT$end: $col$bold${avg_rtt[$p]}$end ms\n"
+	printf "\t$col${underline}Mean RTT Deviation$end: $col$bold${jitter[$p]}$end ms\n"
+	printf "\t$col${underline}Average speed -> me$end: $col$bold${avg_mpm[$p]}$end miles/ms\n"
+	printf "\t$col${underline}Total Distance -> Players$end: $col$bold${total_dist[$p]}$end miles\n"
 }
 info_call ()
 {
 	for p in ${!client[@]} ${#client[@]}; do
 		if [ $p -eq 0 ]; then
-			printf "\n\n$col${bold}Host$end\n"
+			printf "\n$col${bold}Host$end\n"
 			info_state
 		elif [ $p -lt ${#client[@]} ]; then
-			printf "\n\n$col${bold}Player #$p$end\n\n"
+			printf "\n$col${bold}Player #$p$end\n\n"
 			info_state
-			printf "\t$col$teal${underline}Distance -> Host$end: $col$bold${host_dist[$((p-1))]}$end miles\n"
+			printf "\t$col${underline}Distance -> Host$end: $col$bold${host_dist[$((p-1))]}$end miles\n"
 		else
-			printf "\nOverall RTT Deviation: $col$teal$bold$avg_jitter$end ms\n"
-			printf "Distance -> Host: $col$teal$bold${host_dist[$((p-1))]}$end miles\n"
-			printf "Total Distance -> Players: $col$teal$bold${total_dist[$p]}$end miles\n"
-			printf "Average Speed -> Players: $col$teal$bold$avg_avg_mpm$end miles/ms\n"
+			printf "\n$col${underline}Overall RTT Deviation$end: $col$bold$avg_jitter$end ms\n"
+			printf "$col${underline}Distance -> Host$end: $col$bold${host_dist[$((p-1))]}$end miles\n"
+			printf "$col${underline}Total Distance -> Players$end: $col$bold${total_dist[$p]}$end miles\n"
+			printf "$col${underline}Average Speed -> Players$end: $col$bold$avg_avg_mpm$end miles/ms\n"
 		fi
 	done
 }
@@ -274,12 +274,11 @@ if [ $players -gt 0 ]; then
 	done < <(ip -o addr show)
 	col="\x1b["
 	end="\x1b[0m"
-	teal="1;36"
 	green="1;32"
 	blackbg="40m"
 	underline="4m"
 	bold="1m"
-	printf "Waiting for Host to be detected\n\n"
+	printf "Waiting for Host to be detected\n"
 	[ ! -d "$shm" ] && mkdir $shm
 	while [ ! -f "$shm/fin1" ]; do
 		wheel
@@ -292,19 +291,19 @@ if [ $players -gt 0 ]; then
 		sleep 3
 	done &
 	pids+=($!)
-	$CAP -c 4 -vvv -i $lan_if udp port $xport and length = 306 or length = 146 and not host 65.55 and not host 65.59 -w $game_cap &> $null &
+	$CAP -c 4 -vvv -i $lan_if udp port $xport and length = 306 or length = 146 and not host 65.55 and not host 65.59 -w $g_cap &> $null &
 	pids+=($!)
 	wait ${pids[1]}
 	track count
-	pack_num=0
-	for i in ${conn_pack[@]}; do
+	p_num=0
+	for i in ${c_pack[@]}; do
 		if [ $i -gt 550 ]; then
-			((pack_num+=1))
+			((p_num+=1))
 		fi
 	done
-	if [ $pack_num -gt 0 ]; then
-		host_bool=$(echo "$players/$pack_num <= 1.5"|bc)
-		if [ $host_bool -eq 1 ]; then
+	if [ $p_num -gt 0 ]; then
+		h_bool=$(echo "$players/$p_num <= 1.5"|bc)
+		if [ $h_bool -eq 1 ]; then
 			printf "You Have Host!\n\nHave fun!\n\n"
 			$CONN -D -p udp -s $xbox &> $null
 			control_c
@@ -312,9 +311,9 @@ if [ $players -gt 0 ]; then
 		fi
 	fi
 	wait ${pids[2]}
-	$CAP -c 38 -vvv -i $lan_if udp port $xport and length = 66 or length = 68 -w $game_cap1 &> $null
-	host=$(dump_read $game_cap 0)
-	client=($host $(dump_read $game_cap1|sort -u))
+	$CAP -c 38 -vvv -i $lan_if udp port $xport and length = 66 or length = 68 -w $g_cap1 &> $null
+	host=$(dump_read $g_cap 0)
+	client=($host $(dump_read $g_cap1|sort -u))
 	echo 1 > $shm/fin1	
 	wait ${pids[0]}
 	rm $shm/fin1
@@ -322,7 +321,7 @@ if [ $players -gt 0 ]; then
 	tudes $pub_ip
 	wan_lat="$lat1"
 	wan_long="$long1"
-	printf "Performing latency measurements\n\n"
+	printf "Performing latency measurements\n"
 	while [ ! -f "$shm/fin2" ]; do
 		wheel2
 	done &
@@ -407,9 +406,9 @@ if [ $players -gt 0 ]; then
 	date_time="$(date +%m-%d-%Y-%H.%M)"
 	file="/tmp/hostcheck.$date_time"
 	info_call|tee "$file"
-	printf "\nA copy of this report is saved at '$file'\n\n"
+	printf "\nA copy of this report is saved at '$file'\n"
 	disconnect
 else
-	printf "\nPlease wait to be matched in a game\n\n"
+	printf "\nPlease wait to be matched in a game\n"
 fi
 exit
