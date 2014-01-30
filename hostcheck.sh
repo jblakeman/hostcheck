@@ -12,7 +12,7 @@ g_cap=$shm/g_cap.pcap
 g_cap1=$shm/g_cap1.pcap
 location=$shm/geo
 if [ $EUID -ne 0 ]; then
-	printf "\nThis script must be run as root\n\n"
+	printf "\nThis script must be run as root\n"
 	exit 1
 fi
 while read line; do
