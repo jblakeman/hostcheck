@@ -16,8 +16,11 @@ if [ $EUID -ne 0 ]; then
 	exit 1
 fi
 while read line; do
-	if [[ $line =~ src=65.55. ]]; then
-		live=($(sed 's/\([a-zA-Z]\|\[\|\]\|=\|_\)//g' <<< "$line" ))
+	if [[ $line == *"src=65.55."* ]]; then
+		for re in [a-zA-Z] \[\] \= \_; do
+			line=${line//$re/}
+		done
+		live=($line)
 		for i in 0 1 6 7 12 13 14 15; do
 			unset live[$i]
 		done
@@ -29,21 +32,20 @@ track ()
 {
 	local i max
 	c_pack=()
-	while read -a line; do
-		if [[ ${line[@]} =~ sport=3074 ]] && ! [[ ${line[@]} =~ src=65.59. ]] && ! [[ ${line[@]} =~ src=65.55. ]]; then
-			for i in ${line[@]}; do
-				[[ $i =~ packets=[0-9]+ ]] && c_pack+=(${BASH_REMATCH:8})
-			done
+	while read line; do
+		if [[ $line == *"sport=3074"* && ! $line == *"src=65.59."* && ! $line == *"src=65.55."* ]]; then
+			[[ $line =~ packets=([0-9]+) ]] && c_pack+=(${BASH_REMATCH[1]})
 		fi
 	done < <($CONN -L -p udp 2>$null)
 	[[ $1 == count ]] && players=${#c_pack[@]}
-	[[ $1 == pack ]] && packets=$(max=${c_pack[0]}
-					for i in ${c_pack[@]/${c_pack[0]}/}; do
-						if [ $i -gt $max ]; then
-							max=$i
-						fi
-					done
-					echo $max)
+	if [[ $1 == pack ]]; then
+		max_pack=${c_pack[0]}
+		for i in ${c_pack[@]/${c_pack[0]}/}; do
+			if [ $i -gt $max_pack ]; then
+				max_pack=$i
+			fi
+		done
+	fi
 }
 if ! [[ ${live[0]} ]]; then
 	printf "You are not connected to Xbox Live\n"
@@ -65,20 +67,20 @@ else
 fi
 proc_kill ()
 {
-	if [ -e /proc/$1 ]; then
-		disown $1
-		kill -9 $1
-	fi
+	local i
+	for i in ${pids[@]}; do
+		if [ -e /proc/$i ]; then
+			disown $i
+			kill -9 $i
+		fi
+	done
 }
 control_c ()
 {
-	local i
 	printf "\rScript interrupted\n"
 	rm -rf $shm
-	for i in ${pids[@]}; do
-		proc_kill $i
-	done
-	exit 0
+	proc_kill
+	exit 2
 }
 wheel ()
 {
@@ -137,14 +139,13 @@ lookup ()
 }
 geofind ()
 {
-	local n
 	lookup $1
-	n=0
-	while IFS=,  read -a line; do
-		((n++))
-		if [ $n -eq 2 ]; then
-			lat=${line[$((${#line[@]}-3))]}
-			long=${line[$((${#line[@]}-2))]}
+	re="([-0-9\.]{9,11})"
+	while read -a line; do
+		if [[ ${line[@]} =~ $re,\ $re ]]; then
+			lat=${BASH_REMATCH[1]}
+			long=${BASH_REMATCH[2]}
+			break
 		fi
 	done < $location
 }
@@ -226,15 +227,16 @@ traceout ()
 	local trace i
 	trace=()
 	while read -a line; do
-		if ! [[ $line =~ "*" ]]; then
+		if ! [[ ${line[@]} == *"*"* ]]; then
+			trace=()
 			for i in ${line[@]}; do
-				if [[ $i =~ [0-9]+\.[0-9]+ ]] && ! [[ $i =~ [0-9]+\.[0-9]+\. ]]; then
+				if [[ $i =~ [0-9]+\.[0-9]+ && ! $i =~ [0-9]+\.[0-9]+\. ]]; then
 					trace+=($i)
 				fi
 			done
 		fi
 	done < <($TRACERT $player -q 3 -n -f 5 -m 25)
-	echo "${trace[$((${#trace[@]}-1))]} ${trace[$((${#trace[@]}-2))]} ${trace[$((${#trace[@]}-3))]}"
+	echo "${trace[@]}"
 }
 dump_read ()
 {
@@ -287,7 +289,7 @@ if [ $players -gt 0 ]; then
 	$CONN -D -p udp -s $xbox --sport $xport &>$null
 	$CONN -D -p udp -d $wan_ip --dport $nat_port &>$null
 	sleep 15
-	while [ $(track pack; echo $packets) -lt 800 ]; do
+	while [ $(track pack; echo $max_pack) -lt 700 ]; do
 		sleep 3
 	done &
 	pids+=($!)
@@ -298,15 +300,15 @@ if [ $players -gt 0 ]; then
 	p_num=0
 	for i in ${c_pack[@]}; do
 		if [ $i -gt 550 ]; then
-			((p_num+=1))
+			((p_num++))
 		fi
 	done
 	if [ $p_num -gt 0 ]; then
 		h_bool=$(echo "$players/$p_num <= 1.5"|bc)
 		if [ $h_bool -eq 1 ]; then
-			printf "You Have Host!\n\nHave fun!\n\n"
+			printf "You Have Host!\nHave fun!\n"
 			$CONN -D -p udp -s $xbox &> $null
-			control_c
+			proc_kill
 			exit 0
 		fi
 	fi
