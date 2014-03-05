@@ -2,9 +2,9 @@ Host Check
 ==========
 Get latency and distance information of players in peer hosted Xbox Live matchmaking.
 
-Developed for Linux Servers routing Xbox Live traffic.	
+Developed for Linux Servers (Debian based) routing Xbox Live traffic.	
 
-Tested using Ubuntu 12.04 or later, but should work on other Linux distros with some slight modifications.
+Tested using Ubuntu and Debian, but should work on other Linux distros with some slight modifications.
 
 For guides on how to turn machines running Ubuntu into routers, [use google](https://www.google.com/#q=ubuntu+as+a+router).
 
@@ -14,7 +14,7 @@ Features
 * Latency measurements to all players (traceroute)
 * Address based location lookups for all players
 * Distance calculations to host and between all players
-* Disconnect from host
+* Option to disconnect from host
 
 Additional Software Requirements
 --------------------------------
