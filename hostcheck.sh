@@ -30,7 +30,7 @@ while read line; do
 done < <($CONN -L -p udp 2>$null)
 track ()
 {
-	local i max
+	local i max_pack
 	c_pack=()
 	while read line; do
 		if [[ $line == *"sport=3074"* && ! $line == *"src=65.59."* && ! $line == *"src=65.55."* ]]; then
@@ -45,6 +45,7 @@ track ()
 				max_pack=$i
 			fi
 		done
+		echo $max_pack
 	fi
 }
 if ! [[ ${live[0]} ]]; then
@@ -94,7 +95,7 @@ unban ()
 	read -p "Would you like to unblock The Host after disconnect? " yn
 		case $yn in
 			[Yy]*)
-				(sleep 20 && ip rule del from $xbox to $host blackhole) &
+				{ sleep 20 && ip rule del from $xbox to $host blackhole; } &
 				;;
 			[Nn]*);;
 			*)
@@ -140,7 +141,7 @@ lookup ()
 geofind ()
 {
 	lookup $1
-	re="([-0-9\.]{9,11})"
+	re="([-0-9\.]{8,11})"
 	while read -a line; do
 		if [[ ${line[@]} =~ $re,\ $re ]]; then
 			lat=${BASH_REMATCH[1]}
@@ -209,10 +210,6 @@ info_call ()
 		fi
 	done
 }
-ip_tracker ()
-{
-	lynx -dump "http://www.ip-tracker.org/locator/ip-lookup.php?ip=$1"
-}
 average ()
 {
 	local sum a
@@ -227,7 +224,7 @@ traceout ()
 	local trace i
 	trace=()
 	while read -a line; do
-		if ! [[ ${line[@]} == *"*"* ]]; then
+		if [[ ${line[@]} != *"*"* && ${line[@]} != "!" ]]; then
 			trace=()
 			for i in ${line[@]}; do
 				if [[ $i =~ [0-9]+\.[0-9]+ && ! $i =~ [0-9]+\.[0-9]+\. ]]; then
@@ -289,7 +286,7 @@ if [ $players -gt 0 ]; then
 	$CONN -D -p udp -s $xbox --sport $xport &>$null
 	$CONN -D -p udp -d $wan_ip --dport $nat_port &>$null
 	sleep 15
-	while [ $(track pack; echo $max_pack) -lt 700 ]; do
+	while [ $(track pack) -lt 700 ]; do
 		sleep 3
 	done &
 	pids+=($!)
@@ -323,7 +320,7 @@ if [ $players -gt 0 ]; then
 	tudes $pub_ip
 	wan_lat="$lat1"
 	wan_long="$long1"
-	printf "Performing latency measurements\n"
+	printf "Performing latency tests using traceroutes\n"
 	while [ ! -f "$shm/fin2" ]; do
 		wheel2
 	done &
@@ -356,27 +353,15 @@ if [ $players -gt 0 ]; then
 		done < $location
 		state+=("$(regions 7)")
 		city+=("$(regions 6)")
-		while read line; do
-			if [[ $line =~ Address\ Speed ]]; then
-				while IFS=: read _ fast _; do
-					speed+=("$fast")
-				done <<< "$line"
+		while read _ f2 f3 _ _ f6; do
+			if [ "$f2 $f3" == "Address Speed" ]; then
+				speed+=("$f6")
 				break
 			fi
-		done < <(ip_tracker $player)
+		done < <(lynx -dump "http://www.ip-tracker.org/check/internet-speed.php?ip=$player")
 		if [[ ${country[$seq_num]} == "Address not found" ]]; then
-			while read line; do
-				if [[ $line =~ Country: ]]; then
-					read -a c <<< "$line"
-					for i in ${c[@]}; do
-						if ! [[ $i =~ : || $i =~ \[\] || $i =~ \(\) ]]; then
-							land+=($i)
-						fi
-					done
-					break
-				fi
-			done < <(ip_tracker $player)
-			country[$seq_num]=${land[@]}
+			IFS=, read _ _ c _ < <(lynx -dump freegeoip.net/csv/$player)
+			country[$seq_num]=${c//\"/}
 		fi
 		tudes $pub_ip $player
 		haversine
@@ -411,6 +396,6 @@ if [ $players -gt 0 ]; then
 	printf "\nA copy of this report is saved at '$file'\n"
 	disconnect
 else
-	printf "\nPlease wait to be matched in a game\n"
+	printf "Please wait to be matched in a game\n"
 fi
-exit
+exit 0
