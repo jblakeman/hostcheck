@@ -224,7 +224,7 @@ traceout ()
 	local trace i
 	trace=()
 	while read -a line; do
-		if [[ ${line[@]} != *"*"* && ${line[@]} != "!" ]]; then
+		if [[ ${line[@]} != *"*"* && ${line[@]} != *"!"* ]]; then
 			trace=()
 			for i in ${line[@]}; do
 				if [[ $i =~ [0-9]+\.[0-9]+ && ! $i =~ [0-9]+\.[0-9]+\. ]]; then
