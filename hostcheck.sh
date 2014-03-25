@@ -1,18 +1,19 @@
 #!/bin/bash
 
-IPT=/sbin/iptables
-TRACERT=/usr/bin/traceroute
-CONN=/usr/sbin/conntrack
-IP=/bin/ip
-CAP=/usr/sbin/tcpdump
-GEO=/usr/bin/geoiplookup
+ipt=/sbin/iptables
+tracert=/usr/bin/traceroute
+conn=/usr/sbin/conntrack
+ip=/bin/ip
+cap=/usr/sbin/tcpdump
+geo=/usr/bin/geoiplookup
 shm=/dev/shm/host
 null=/dev/null
 g_cap=$shm/g_cap.pcap
 g_cap1=$shm/g_cap1.pcap
 location=$shm/geo
+
 if [ $EUID -ne 0 ]; then
-	printf "\nThis script must be run as root\n"
+	printf "This script must be run as root\n"
 	exit 1
 fi
 while read line; do
@@ -27,16 +28,16 @@ while read line; do
 		live=(${live[@]})
 		break
 	fi
-done < <($CONN -L -p udp 2>$null)
+done < <($conn -L -p udp 2>$null)
 track ()
 {
-	local i max_pack
+	local i
 	c_pack=()
 	while read line; do
 		if [[ $line == *"sport=3074"* && ! $line == *"src=65.59."* && ! $line == *"src=65.55."* ]]; then
 			[[ $line =~ packets=([0-9]+) ]] && c_pack+=(${BASH_REMATCH[1]})
 		fi
-	done < <($CONN -L -p udp 2>$null)
+	done < <($conn -L -p udp 2>$null)
 	[[ $1 == count ]] && players=${#c_pack[@]}
 	if [[ $1 == pack ]]; then
 		max_pack=${c_pack[0]}
@@ -45,12 +46,11 @@ track ()
 				max_pack=$i
 			fi
 		done
-		echo $max_pack
 	fi
 }
 if ! [[ ${live[0]} ]]; then
 	printf "You are not connected to Xbox Live\n"
-	exit 0
+	exit 1
 else
 	if [[ ${live[1]} == ${live[4]} ]]; then
 		xbox=${live[0]}
@@ -81,7 +81,7 @@ control_c ()
 	printf "\rScript interrupted\n"
 	rm -rf $shm
 	proc_kill
-	exit 2
+	exit 1
 }
 wheel ()
 {
@@ -96,6 +96,7 @@ unban ()
 		case $yn in
 			[Yy]*)
 				{ sleep 20 && ip rule del from $xbox to $host blackhole; } &
+				pids+=($!)
 				;;
 			[Nn]*);;
 			*)
@@ -108,12 +109,12 @@ disconnect ()
 	read -p "Do you wish to disconnect from The Host? " yn
 		case $yn in
 			[Yy]*)
-				$IPT -I FORWARD -p udp -d $host -m statistic --mode random --probability .2 -j DROP
-				printf "\nRandomizing packet loss before disconnect\n\n"
+				$ipt -I FORWARD -p udp -d $host -m statistic --mode random --probability .2 -j DROP
+				printf "Randomizing packet loss before disconnect\n"
 				sleep 7
 				ip rule add from $xbox to $host blackhole
-				$CONN -D -d $host &>$null
-				$IPT -D FORWARD -p udp -d $host -m statistic --mode random --probability .2 -j DROP
+				$conn -D -d $host &>$null
+				$ipt -D FORWARD -p udp -d $host -m statistic --mode random --probability .2 -j DROP
 				unban;;
 			[Nn]*);;
 			*)
@@ -136,7 +137,7 @@ wheel2 ()
 }
 lookup ()
 {
-	$GEO $1 > $location
+	$geo $1 > $location
 }
 geofind ()
 {
@@ -182,11 +183,11 @@ haversine ()
 	c=$(awk -v x=$e -v y=$f 'BEGIN{print 2*atan2(x,y);}')
 	d=$(printf "%1.0f" $(echo "$rad*$c"|bc -l))
 }
-info_state ()
+info ()
 {
 	printf "\t$col${underline}Country$end: ${country[$p]}\n"
 	printf "\t$col${underline}Region$end: ${city[$p]}, ${state[$p]}\n"
-	printf "\t$col${underline}Connection$end: ${speed[$p]}\n"
+	printf "\t$col${underline}ISP$end: ${isp[$p]}\n"
 	printf "\t$col${underline}Average RTT$end: $col$bold${avg_rtt[$p]}$end ms\n"
 	printf "\t$col${underline}Mean RTT Deviation$end: $col$bold${jitter[$p]}$end ms\n"
 	printf "\t$col${underline}Average speed -> me$end: $col$bold${avg_mpm[$p]}$end miles/ms\n"
@@ -197,10 +198,10 @@ info_call ()
 	for p in ${!client[@]} ${#client[@]}; do
 		if [ $p -eq 0 ]; then
 			printf "\n$col${bold}Host$end\n"
-			info_state
+			info
 		elif [ $p -lt ${#client[@]} ]; then
 			printf "\n$col${bold}Player #$p$end\n\n"
-			info_state
+			info
 			printf "\t$col${underline}Distance -> Host$end: $col$bold${host_dist[$((p-1))]}$end miles\n"
 		else
 			printf "\n$col${underline}Overall RTT Deviation$end: $col$bold$avg_jitter$end ms\n"
@@ -232,7 +233,7 @@ traceout ()
 				fi
 			done
 		fi
-	done < <($TRACERT $player -q 3 -n -f 5 -m 25)
+	done < <($tracert $player -q 3 -n -f 5 -m 25)
 	echo "${trace[@]}"
 }
 dump_read ()
@@ -247,7 +248,7 @@ dump_read ()
 			fi
 		done
 		[[ $2 ]] && break
-	done < <($CAP -n -r $1 2>$null)
+	done < <($cap -n -r $1 2>$null)
 }
 regions ()
 {
@@ -283,14 +284,16 @@ if [ $players -gt 0 ]; then
 		wheel
 	done &
 	pids=($!)
-	$CONN -D -p udp -s $xbox --sport $xport &>$null
-	$CONN -D -p udp -d $wan_ip --dport $nat_port &>$null
+	$conn -D -p udp -s $xbox --sport $xport &>$null
+	$conn -D -p udp -d $wan_ip --dport $nat_port &>$null
 	sleep 15
-	while [ $(track pack) -lt 700 ]; do
+	track pack
+	while [ $max_pack -lt 700 ]; do
 		sleep 3
+		track pack
 	done &
 	pids+=($!)
-	$CAP -c 4 -vvv -i $lan_if udp port $xport and length = 306 or length = 146 and not host 65.55 and not host 65.59 -w $g_cap &> $null &
+	$cap -c 4 -vvv -i $lan_if udp port $xport and length = 306 or length = 146 and not host 65.55 and not host 65.59 -w $g_cap &> $null &
 	pids+=($!)
 	wait ${pids[1]}
 	track count
@@ -303,20 +306,19 @@ if [ $players -gt 0 ]; then
 	if [ $p_num -gt 0 ]; then
 		h_bool=$(echo "$players/$p_num <= 1.5"|bc)
 		if [ $h_bool -eq 1 ]; then
-			printf "You Have Host!\nHave fun!\n"
-			$CONN -D -p udp -s $xbox &> $null
+			printf "You Have Host! Have fun!\n"
 			proc_kill
 			exit 0
 		fi
 	fi
 	wait ${pids[2]}
-	$CAP -c 38 -vvv -i $lan_if udp port $xport and length = 66 or length = 68 -w $g_cap1 &> $null
+	$cap -c 38 -vvv -i $lan_if udp port $xport and length = 66 or length = 68 -w $g_cap1 &> $null
 	host=$(dump_read $g_cap 0)
 	client=($host $(dump_read $g_cap1|sort -u))
 	echo 1 > $shm/fin1	
 	wait ${pids[0]}
 	rm $shm/fin1
-	read pub_ip _ < <(lynx -dump icanhazip.com)
+	pub_ip=$(curl -4 icanhazip.com)
 	tudes $pub_ip
 	wan_lat="$lat1"
 	wan_long="$long1"
@@ -347,22 +349,23 @@ if [ $players -gt 0 ]; then
 		while IFS=,  read _ land _ ; do
 			((n++))
 			if [ $n -eq 1 ]; then
-				country+=("$land")
+				country+=("${land/[[:space:]]/}")
 				break
 			fi
 		done < $location
 		state+=("$(regions 7)")
 		city+=("$(regions 6)")
-		while read _ f2 f3 _ _ f6; do
-			if [ "$f2 $f3" == "Address Speed" ]; then
-				speed+=("$f6")
+		while read ref org; do
+			if [[ ${country[$seq_num]} == "United States" || ${country[$seq_num]} == "Canada" ]]; then
+				if [[ $ref == "CustName:" || $ref == "OrgName:" ]]; then
+					isp+=("$org")
+					break
+				fi
+			elif [[ $ref == "descr:" || $ref == "owner:" ]]; then
+				isp+=("$org")
 				break
 			fi
-		done < <(lynx -dump "http://www.ip-tracker.org/check/internet-speed.php?ip=$player")
-		if [[ ${country[$seq_num]} == "Address not found" ]]; then
-			IFS=, read _ _ c _ < <(lynx -dump freegeoip.net/csv/$player)
-			country[$seq_num]=${c//\"/}
-		fi
+		done < <(whois $player)
 		tudes $pub_ip $player
 		haversine
 		my_dist+=($d)
@@ -397,5 +400,6 @@ if [ $players -gt 0 ]; then
 	disconnect
 else
 	printf "Please wait to be matched in a game\n"
+	exit 1
 fi
 exit 0
