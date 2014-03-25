@@ -18,15 +18,13 @@ Features
 
 Additional Software Requirements
 --------------------------------
-1. tcpdump
-2. conntrack
-3. traceroute
-4. lynx
-5. geoiplookup
+1. conntrack
+2. traceroute
+3. geoiplookup
 
 #### Install
 
-	sudo apt-get install tcpdump conntrack traceroute lynx geoip-bin -y
+	sudo apt-get install conntrack traceroute geoip-bin -y
 
 #### Download, extract and move GeoLiteCity database
 
