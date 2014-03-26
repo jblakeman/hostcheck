@@ -318,7 +318,7 @@ if [ $players -gt 0 ]; then
 	echo 1 > $shm/fin1	
 	wait ${pids[0]}
 	rm $shm/fin1
-	pub_ip=$(curl -4 icanhazip.com)
+	pub_ip=$(curl -4 icanhazip.com 2>$null)
 	tudes $pub_ip
 	wan_lat="$lat1"
 	wan_long="$long1"
@@ -362,10 +362,10 @@ if [ $players -gt 0 ]; then
 					break
 				fi
 			elif [[ $ref == "descr:" || $ref == "owner:" ]]; then
-				isp+=("$org")
-				break
+				isp[$seq_num]="$org"
 			fi
 		done < <(whois $player)
+		[[ ! ${isp[$seq_num]} ]] && isp[$seq_num]="N/A"
 		tudes $pub_ip $player
 		haversine
 		my_dist+=($d)
