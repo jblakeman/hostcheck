@@ -29,6 +29,8 @@ while read line; do
 		break
 	fi
 done < <($conn -L -p udp 2>$null)
+acct=/proc/sys/net/netfilter/nf_conntrack_acct
+[ $(< $acct) -ne 1 ] && echo 1 > $acct
 track ()
 {
 	local i
@@ -38,8 +40,9 @@ track ()
 			[[ $line =~ packets=([0-9]+) ]] && c_pack+=(${BASH_REMATCH[1]})
 		fi
 	done < <($conn -L -p udp 2>$null)
-	[[ $1 == count ]] && players=${#c_pack[@]}
-	if [[ $1 == pack ]]; then
+	if [[ $1 == count ]]; then
+		players=${#c_pack[@]}
+	elif [[ $1 == pack ]]; then
 		max_pack=${c_pack[0]}
 		for i in ${c_pack[@]/${c_pack[0]}/}; do
 			if [ $i -gt $max_pack ]; then
@@ -92,7 +95,8 @@ wheel ()
 }
 unban ()
 {
-	read -p "Would you like to unblock The Host after disconnect? " yn
+	local yn
+	read -p "Would you like to unblock The Host after disconnect? (Yy|Nn) " yn
 		case $yn in
 			[Yy]*)
 				{ sleep 20 && ip rule del from $xbox to $host blackhole; } &
@@ -106,15 +110,11 @@ unban ()
 }
 disconnect ()
 {
-	read -p "Do you wish to disconnect from The Host? " yn
+	local yn
+	read -p "Do you wish to disconnect from The Host? (Yy|Nn) " yn
 		case $yn in
 			[Yy]*)
-				$ipt -I FORWARD -p udp -d $host -m statistic --mode random --probability .2 -j DROP
-				printf "Randomizing packet loss before disconnect\n"
-				sleep 7
 				ip rule add from $xbox to $host blackhole
-				$conn -D -d $host &>$null
-				$ipt -D FORWARD -p udp -d $host -m statistic --mode random --probability .2 -j DROP
 				unban;;
 			[Nn]*);;
 			*)
