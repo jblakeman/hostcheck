@@ -36,7 +36,7 @@ track ()
 	local i
 	c_pack=()
 	while read line; do
-		if [[ $line == *"sport=3074"* && ! $line == *"src=65.59."* && ! $line == *"src=65.55."* ]]; then
+		if [[ $line == *"sport=$xport"* && ! $line == *"src=65.59."* && ! $line == *"src=65.55."* ]]; then
 			[[ $line =~ packets=([0-9]+) ]] && c_pack+=(${BASH_REMATCH[1]})
 		fi
 	done < <($conn -L -p udp 2>$null)
@@ -88,10 +88,12 @@ control_c ()
 }
 wheel ()
 {
-	printf " $col${green}m|$end\r"; sleep ".15"
-	printf " $col${green}m/$end\r"; sleep ".15"
-	printf " $col${green}m-$end\r"; sleep ".15"
-	printf " $col${green}m\ $end\r"; sleep ".15"
+	local arr
+	arr=('|' '/' '-' '\ ')
+	for i in "${arr[@]}"; do
+		printf " $col${green}m%s$end\r" "$i"
+		sleep ".15"
+	done
 }
 unban ()
 {
@@ -124,16 +126,13 @@ disconnect ()
 }
 wheel2 ()
 {
-	printf " $col${green}m|>    |$end\r"; sleep ".15"
-	printf " $col${green}m|=>   |$end\r"; sleep ".15"
-	printf " $col${green}m|==>  |$end\r"; sleep ".15"
-	printf " $col${green}m|===> |$end\r"; sleep ".15"
-	printf " $col${green}m|====>|$end\r"; sleep ".15"
-	printf " $col${green}m|    <|$end\r"; sleep ".15"
-	printf " $col${green}m|   <=|$end\r"; sleep ".15"
-	printf " $col${green}m|  <==|$end\r"; sleep ".15"
-	printf " $col${green}m| <===|$end\r"; sleep ".15"
-	printf " $col${green}m|<====|$end\r"; sleep ".15"
+	local arr
+	arr=('|>    |' '|=>   |' '|==>  |' '|===> |' '|====>|'\
+	     '|    <|' '|   <=|' '|  <==|' '| <===|' '|<====|')
+	for i in "${arr[@]}"; do
+		printf " $col${green}m%s$end\r" "$i"
+		sleep ".15"
+	done
 }
 lookup ()
 {
@@ -142,9 +141,9 @@ lookup ()
 geofind ()
 {
 	lookup $1
-	re="([-0-9\.]{8,11})"
+	re="[-0-9\.]{8,11}"
 	while read -a line; do
-		if [[ ${line[@]} =~ $re,\ $re ]]; then
+		if [[ ${line[@]} =~ ($re),\ ($re) ]]; then
 			lat=${BASH_REMATCH[1]}
 			long=${BASH_REMATCH[2]}
 			break
@@ -169,19 +168,18 @@ tudes ()
 }
 haversine ()
 {
-	local rad d_lat d_long a e f c
-	lat1=$(echo "$lat1*(3.14159265/180)"|bc -l)
-	long1=$(echo "$long1*(3.14159265/180)"|bc -l)
-	lat2=$(echo "$lat2*(3.14159265/180)"|bc -l)
-	long2=$(echo "$long2*(3.14159265/180)"|bc -l)
+	local pi rad d_lat d_long a b
+	pi="$(echo "scale=8; 4*a(1)"|bc -l)"
+	lat1=$(echo "$lat1*($pi/180)"|bc -l)
+	long1=$(echo "$long1*($pi/180)"|bc -l)
+	lat2=$(echo "$lat2*($pi/180)"|bc -l)
+	long2=$(echo "$long2*($pi/180)"|bc -l)
 	rad=$(echo "6371.0072*0.6214"|bc -l)
 	d_lat=$(echo "$lat1 - $lat2"|bc -l)
 	d_long=$(echo "$long1 - $long2"|bc -l)
-	a=$(echo "s($d_lat/2)^2+c($lat1)*c($lat2)*s($d_long/2)^2"|bc -l)
-	e=$(echo "sqrt($a)"|bc -l)
-	f=$(echo "sqrt(1 - $a)"|bc -l)
-	c=$(awk -v x=$e -v y=$f 'BEGIN{print 2*atan2(x,y);}')
-	d=$(printf "%1.0f" $(echo "$rad*$c"|bc -l))
+	a="$(echo "sqrt(s($d_lat/2)^2+c($lat1)*c($lat2)*s($d_long/2)^2)"|bc -l)"
+	b="$(awk -v a=$a 'BEGIN{print 2*atan2(a,sqrt(1-a*a));}')"
+	d=$(printf "%1.0f" $(echo "$rad*$b"|bc -l))
 }
 info ()
 {
