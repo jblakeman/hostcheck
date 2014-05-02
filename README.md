@@ -13,7 +13,7 @@ Features
 * Host detection
 * Latency measurements to all players (traceroute)
 * Address based location lookups for all players
-* Distance calculations to host and between all players
+* Distance calculations for all players
 * Option to disconnect from host
 
 Additional Software Requirements
@@ -22,11 +22,11 @@ Additional Software Requirements
 2. traceroute
 3. geoiplookup
 
-#### Install
+#### Install Packages
 
 	sudo apt-get install conntrack traceroute geoip-bin -y
 
-#### Download, extract and move GeoLiteCity database
+#### Download GeoLiteCity database
 
 	wget -N http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz
 	gunzip GeoLiteCity.dat.gz
@@ -36,4 +36,4 @@ Notes
 -----
 1. Outgoing traceroute requests must not be blocked.
 			
-2. Xbox IP address must be a private address as described in [RFC 1918](https://tools.ietf.org/html/rfc1918)
+2. Xbox IP address must be in private address space as described in [RFC 1918](https://tools.ietf.org/html/rfc1918)
