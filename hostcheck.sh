@@ -1,11 +1,11 @@
 #!/bin/bash
 
-ipt=/sbin/iptables
-tracert=/usr/bin/traceroute
-conn=/usr/sbin/conntrack
-ip=/bin/ip
-cap=/usr/sbin/tcpdump
-geo=/usr/bin/geoiplookup
+ipt=$(which iptables)
+tracert=$(which traceroute)
+conn=$(which conntrack)
+ip=$(which ip)
+cap=$(which tcpdump)
+geo=$(which geoiplookup)
 shm=/dev/shm/host
 null=/dev/null
 g_cap=$shm/g_cap.pcap
@@ -302,7 +302,7 @@ if [ $players -gt 0 ]; then
 		fi
 	done
 	if [ $p_num -gt 0 ]; then
-		h_bool=$(echo "$players/$p_num <= 1.5"|bc)
+		h_bool=$(echo "${#c_pack[@]}/$p_num <= 1.5"|bc)
 		if [ $h_bool -eq 1 ]; then
 			printf "You Have Host! Have fun!\n"
 			proc_kill
@@ -310,6 +310,8 @@ if [ $players -gt 0 ]; then
 		fi
 	fi
 	wait ${pids[2]}
+	# We must capture the following player specific heartbeat packets to eliminate false positives
+	# Using conntrack might give us IP addresses of party chat members or friends not in the game
 	$cap -c 38 -vvv -i $lan_if udp port $xport and length = 66 or length = 68 -w $g_cap1 &> $null
 	host=$(dump_read $g_cap 0)
 	client=($host $(dump_read $g_cap1|sort -u))
@@ -361,6 +363,7 @@ if [ $players -gt 0 ]; then
 				fi
 			elif [[ $ref == "descr:" || $ref == "owner:" ]]; then
 				isp[$seq_num]="$org"
+				break
 			fi
 		done < <(whois $player)
 		[[ ! ${isp[$seq_num]} ]] && isp[$seq_num]="N/A"
