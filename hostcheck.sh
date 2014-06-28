@@ -187,13 +187,13 @@ haversine ()
 }
 info ()
 {
-    printf "\t$col${underline}Country$end: \t${country[$1]}\n"
-    printf "\t$col${underline}Region$end: \t${city[$1]}, ${state[$1]}\n"
-    printf "\t$col${underline}ISP$end: \t${isp[$1]}\n"
-    printf "\t$col${underline}Average RTT$end: \t$col$bold${avg_rtt[$1]}$end ms\n"
-    printf "\t$col${underline}Mean RTT Deviation$end: \t$col$bold${jitter[$1]}$end ms\n"
-    printf "\t$col${underline}Average speed -> me$end: \t$col$bold${avg_mpm[$1]}$end miles/ms\n"
-    printf "\t$col${underline}Total Distance -> Players$end: \t$col$bold${total_dist[$1]}$end miles\n"
+    printf "\t$col${underline}Country$end: ${country[$1]}\n"
+    printf "\t$col${underline}Region$end: ${city[$1]}, ${state[$1]}\n"
+    printf "\t$col${underline}ISP$end: ${isp[$1]}\n"
+    printf "\t$col${underline}Average RTT$end: $col$bold${avg_rtt[$1]}$end ms\n"
+    printf "\t$col${underline}Mean RTT Deviation$end: $col$bold${jitter[$1]}$end ms\n"
+    printf "\t$col${underline}Average speed -> me$end: $col$bold${avg_mpm[$1]}$end miles/ms\n"
+    printf "\t$col${underline}Total Distance -> Players$end: $col$bold${total_dist[$1]}$end miles\n"
 }
 info_call ()
 {
@@ -206,13 +206,13 @@ info_call ()
         elif [[ $player != $pub_ip ]]; then
             printf "\n$col${bold}Player #$n$end\n\n"
             info $player
-            printf "\t$col${underline}Distance -> Host$end: \t$col$bold${host_dist[$player]}$end miles\n"
+            printf "\t$col${underline}Distance -> Host$end: $col$bold${host_dist[$player]}$end miles\n"
             ((n++))
         else
-            printf "\n$col${underline}Overall RTT Deviation$end: \t$col$bold$avg_jitter$end ms\n"
-            printf "$col${underline}Distance -> Host$end: \t$col$bold${host_dist[$player]}$end miles\n"
-            printf "$col${underline}Total Distance -> Players$end: \t$col$bold${my_dist}$end miles\n"
-            printf "$col${underline}Average Speed -> Players$end: \t$col$bold$avg_avg_mpm$end miles/ms\n"
+            printf "\n$col${underline}Overall RTT Deviation$end: $col$bold$avg_jitter$end ms\n"
+            printf "$col${underline}Distance -> Host$end: $col$bold${host_dist[$player]}$end miles\n"
+            printf "$col${underline}Total Distance -> Players$end: $col$bold${my_dist}$end miles\n"
+            printf "$col${underline}Average Speed -> Players$end: $col$bold$avg_avg_mpm$end miles/ms\n"
         fi
     done
 }
@@ -391,7 +391,7 @@ if [ $players -gt 0 ]; then
     tudes $pub_ip
     wan_lat="$lat1"
     wan_long="$long1"
-    printf "Performing latency tests using traceroutes\n"
+    printf "Testing latency\n"
     while [ ! -f "$shm/fin2" ]; do
         wheel2
     done &
