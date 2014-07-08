@@ -8,15 +8,17 @@ cap=$(which tcpdump)
 geo=$(which geoiplookup)
 shm=/dev/shm/host
 null=/dev/null
-g_cap=$shm/g_cap.pcap
-g_cap1=$shm/g_cap1.pcap
+host_cap=$shm/h.pcap
+client_cap=$shm/c.pcap
 location=$shm/geo
 
 if [ $EUID -ne 0 ]; then
-    printf "This script must be run as root\n"
+    echo "This script must be run as root"
     exit 1
 fi
-while read line; do
+
+# Find Xbox Live connection track
+while read -r line; do
     if [[ $line == *"src=65.55."* ]]; then
         for re in [a-zA-Z] \[\] \= \_; do
             line=${line//$re/}
@@ -29,14 +31,19 @@ while read line; do
         break
     fi
 done < <($conn -L -p udp 2>$null)
+
+# Enable conntrack packet counter 
 acct=/proc/sys/net/netfilter/nf_conntrack_acct
 [ $(< $acct) -ne 1 ] && echo 1 > $acct
+
 d="[0-9]"
 track ()
 {
+    # Count packets of players
     local i
     c_pack=()
-    while read line; do
+    while read -r line; do
+        # Don't count packets with Xbox Live IP ranges
         if [[ $line == *"sport=$xport"* &&
                 ! $line == *"src=65.59."* &&
                 ! $line == *"src=65.55."* ]]; then
@@ -55,7 +62,7 @@ track ()
     fi
 }
 if ! [[ ${live[0]} ]]; then
-    printf "You are not connected to Xbox Live\n"
+    echo "You are not connected to Xbox Live"
     exit 1
 else
     if [[ ${live[1]} == ${live[4]} ]]; then
@@ -72,36 +79,45 @@ else
     fi
     track count
 fi
-proc_kill ()
+procKill ()
 {
     local i
-    for i in ${pids[@]}; do
+    for i; do
         if [ -e /proc/$i ]; then
             disown $i
             kill -9 $i
         fi
     done
 }
-control_c ()
+controlC ()
 {
-    printf "\rScript interrupted\n"
+    echo -e "\rScript interrupted"
     rm -rf $shm
-    proc_kill
+    procKill ${pids[@]}
     exit 1
+}
+finishedBG ()
+{
+    # Signal end of process by creating file in shared memory
+    local shared
+    shared=$shm/$1
+    echo 1 > $shared
+    wait $2
+    rm $shared
 }
 wheel ()
 {
-    local arr
-    arr=('|' '/' '-' '\ ')
-    for i in "${arr[@]}"; do
+    local i
+    for i; do
         printf " $col${green}m%s$end\r" "$i"
         sleep ".15"
     done
 }
+yorn="Please answer yes or no"
 unban ()
 {
     local yn
-    read -p "Would you like to unblock The Host after disconnect? (Yy|Nn) " yn
+    read -p "Unblock Host after disconnect? (Yy|Nn) " yn
         case $yn in
             [Yy]*)
                 { sleep 20 && ip rule del from $xbox to $host blackhole; } &
@@ -109,130 +125,102 @@ unban ()
                 ;;
             [Nn]*);;
             *)
-                printf "Please answer yes or no.\n"
+                echo "$yorn"
                 unban;;
         esac
 }
 disconnect ()
 {
     local yn
-    read -p "Do you wish to disconnect from The Host? (Yy|Nn) " yn
+    read -p "Disconnect from Host? (Yy|Nn) " yn
         case $yn in
             [Yy]*)
                 ip rule add from $xbox to $host blackhole
                 unban;;
             [Nn]*);;
             *)
-                printf "Please answer yes or no.\n"
+                echo "$yorn"
                 disconnect;;
         esac
 }
-wheel2 ()
-{
-    local arr
-    arr=('|>    |' '|=>   |' '|==>  |' '|===> |' '|====>|'\
-         '|    <|' '|   <=|' '|  <==|' '| <===|' '|<====|')
-    for i in "${arr[@]}"; do
-        printf " $col${green}m%s$end\r" "$i"
-        sleep ".15"
-    done
-}
-lookup ()
-{
-    $geo $1 > $location
-}
-geofind ()
-{
-    local re
-    lookup $1
-    re="[-0-9\.]{8,11}"
-    while read -a line; do
-        if [[ ${line[@]} =~ ($re),\ ($re) ]]; then
-            lat=${BASH_REMATCH[1]}
-            long=${BASH_REMATCH[2]}
-            break
-        fi
-    done < $location
-}
-tudes ()
-{
-    if [[ $wan_lat && $wan_long && $1 == $pub_ip ]]; then
-        lat1="$wan_lat"
-        long1="$wan_long"
-    else
-        geofind $1
-        lat1="$lat"
-        long1="$long"
-    fi
-    if [[ $2 ]]; then
-        geofind $2
-        lat2="$lat"
-        long2="$long"
-    fi
-}
 haversine ()
 {
+    # Find distance between two points on the globe
     local pi rad d_lat d_long a b
-    pi="$(echo "4*a(1)"|bc -l)"
-    lat1=$(echo "$lat1*($pi/180)"|bc -l)
-    long1=$(echo "$long1*($pi/180)"|bc -l)
-    lat2=$(echo "$lat2*($pi/180)"|bc -l)
-    long2=$(echo "$long2*($pi/180)"|bc -l)
+    pi=$(echo "4*a(1)"|bc -l)
+    radians=$(echo "$pi/180"|bc -l)
+    lat1=$(echo "${lat[$1]}*$radians"|bc -l)
+    long1=$(echo "${long[$1]}*$radians"|bc -l)
+    lat2=$(echo "${lat[$2]}*$radians"|bc -l)
+    long2=$(echo "${long[$2]}*$radians"|bc -l)
     rad=$(echo "6371.0072*0.6214"|bc -l)
     d_lat=$(echo "$lat1 - $lat2"|bc -l)
     d_long=$(echo "$long1 - $long2"|bc -l)
     a="$(echo "sqrt(s($d_lat/2)^2+c($lat1)*c($lat2)*s($d_long/2)^2)"|bc -l)"
     b="$(awk -v a=$a 'BEGIN{print 2*atan2(a,sqrt(1-a*a));}')"
-    d=$(printf "%1.0f" $(echo "$rad*$b"|bc -l))
+    dist=$(printf "%1.0f" $(echo "$rad*$b"|bc -l))
 }
 info ()
 {
-    printf "\t$col${underline}Country$end: ${country[$1]}\n"
-    printf "\t$col${underline}Region$end: ${city[$1]}, ${state[$1]}\n"
-    printf "\t$col${underline}ISP$end: ${isp[$1]}\n"
-    printf "\t$col${underline}Average RTT$end: $col$bold${avg_rtt[$1]}$end ms\n"
-    printf "\t$col${underline}Mean RTT Deviation$end: $col$bold${jitter[$1]}$end ms\n"
-    printf "\t$col${underline}Average speed -> me$end: $col$bold${avg_mpm[$1]}$end miles/ms\n"
-    printf "\t$col${underline}Total Distance -> Players$end: $col$bold${total_dist[$1]}$end miles\n"
+    echo -e "\t$col${underline}Country$end:           ${country[$1]}"
+    echo -e "\t$col${underline}Region$end:            ${city[$1]}, ${state[$1]}"
+    echo -e "\t$col${underline}Provider$end:          ${isp[$1]}"
+    echo -e "\t$col${underline}Average Ping$end:      ${avg_rtt[$1]} ms"
+    echo -e "\t$col${underline}Ping Deviation$end:    ${jitter[$1]}$end ms"
+    echo -e "\t$col${underline}Average speed$end:     ${mpm[$1]}$end miles/ms"
+    echo -e "\t$col${underline}Total Distance$end:    ${total_dist[$1]}$end miles"
 }
-info_call ()
+infoCall ()
 {
+    # Output statistics for each player
     local n player
     n=1
-    for player in ${client[@]}; do
+    for player; do
         if [[ $player == $host ]]; then
-            printf "\n$col${bold}Host$end\n"
+            echo -e "\n$col${bold}Host$end"
             info $player
         elif [[ $player != $pub_ip ]]; then
-            printf "\n$col${bold}Player #$n$end\n\n"
+            echo -e "\n$col${bold}Player $n$end\n"
             info $player
-            printf "\t$col${underline}Distance -> Host$end: $col$bold${host_dist[$player]}$end miles\n"
+            echo -e "\t$col${underline}Host Distance$end:     $col$bold${host_dist[$player]}$end miles"
             ((n++))
         else
-            printf "\n$col${underline}Overall RTT Deviation$end: $col$bold$avg_jitter$end ms\n"
-            printf "$col${underline}Distance -> Host$end: $col$bold${host_dist[$player]}$end miles\n"
-            printf "$col${underline}Total Distance -> Players$end: $col$bold${my_dist}$end miles\n"
-            printf "$col${underline}Average Speed -> Players$end: $col$bold$avg_avg_mpm$end miles/ms\n"
+            echo -e "\n$col${bold}User$end\n"
+            echo -e "\t$col${underline}Ping Deviation$end:    $avg_jitter ms"
+            echo -e "\t$col${underline}Host Distance$end:     ${host_dist[$player]} miles"
+            echo -e "\t$col${underline}Total Distance$end:    ${total_dist[$player]} miles"
+            echo -e "\t$col${underline}Average Speed$end:     $avg_mpm miles/ms"
         fi
     done
 }
 average ()
 {
-    local sum a
+    local sum value
     sum=0
-    for a; do
-        sum=$(echo "$a+$sum"|bc -l)
+    for i; do
+        sum=$(echo "$i+$sum"|bc -l)
     done
     echo "scale=3; $sum/$#"|bc
 }
-traceout ()
+total (){
+    local sum i
+    sum=0
+    for i; do
+        ((sum+=$i))
+    done
+    echo $sum
+}
+traceOut ()
 {
+    # Output traceroute latency to furthest hop
     local trace i
     trace=()
-    while read -a line; do
+    while read -ra line; do
+        # Don't match dropped hops or unreachable messages
         if [[ ${line[@]} != *"*"* && ${line[@]} != *"!"* ]]; then
             trace=()
             for i in ${line[@]}; do
+                # match time in milliseconds
                 if [[ $i =~ $d+\.$d+ && ! $i =~ $d+\.$d+\. ]]; then
                     trace+=($i)
                 fi
@@ -241,179 +229,240 @@ traceout ()
     done < <($tracert $player -q 3 -n -f 5 -m 25)
     echo "${trace[@]}"
 }
-dump_read ()
+dumpRead ()
 {
+    # Parse tcpdump results for player IP addresses
     local i d3 ip
     d3="$d{1,3}"
     ip="$d3\.$d3\.$d3\.$d3"
-    while read -a line; do
+    while read -ra line; do
         for i in ${line[@]}; do
             if [[ $i =~ $ip ]]; then
                 if [[ $BASH_REMATCH != $xbox ]]; then
                     echo $BASH_REMATCH
+                    # Match first IP only if host capture
+                    [[ $1 == $host_cap ]] && return
                 fi
             fi
         done
-        [[ $2 ]] && break
     done < <($cap -n -r $1 2>$null)
 }
 regions ()
 {
-    local n
-    n=0
-    while IFS=,  read -a reg; do
-        ((n++))
-        if [ $n -eq 2 ]; then
-            echo ${reg[$((${#reg[@]}-$1))]}
+    local player
+    for player; do
+        # Parse geoiplookup results for location data
+        local n re
+        n=0
+        re="[-0-9\.]{8,11}"
+        while IFS=, read -ra reg; do
+            ((n++))
+            # Only need lat/long points for user
+            if [[ $player != $pub_ip ]]; then
+                if [ $n -eq 1 ]; then
+                    country[$player]="${reg[-1]#[[:space:]]}"
+                elif [ $n -eq 2 ]; then
+                    city[$player]="${reg[-6]#[[:space:]]}"
+                    state[$player]="${reg[-7]#[[:space:]]}"
+                fi
+            fi
+            if [[ ${reg[@]} =~ ($re)\ ($re) ]]; then
+                lat[$player]=${BASH_REMATCH[1]}
+                long[$player]=${BASH_REMATCH[2]}
+                break
+            fi
+        done < <($geo $player)
+    done
+}
+ispFind ()
+{
+    # ISP lookup fields vary by region
+    while read ref org; do
+        if [[ ${country[$1]} == "United States" ||
+                ${country[$1]} == "Canada" ]]; then
+            if [[ $ref == "CustName:" || $ref == "OrgName:" ]]; then
+                isp[$1]="$org"
+                break
+            fi
+        elif [[ $ref == "descr:" || $ref == "owner:" ]]; then
+            isp[$1]="$org"
             break
         fi
-    done < $location
+    done < <(whois $1)
+    [[ ! ${isp[$1]} ]] && isp[$1]="N/A"
 }
-getData ()
+latency ()
 {
-    local n i t d player
-    my_dist=0
-    for player in ${client[@]}; do
-        lookup $player
-        read t < $shm/$player
-        trace_ms[$player]="$t"
-        avg_rtt[$player]="$(printf "%1.3f" $(average ${trace_ms[$player]}))"
-        diff[$player]="$(for i in ${trace_ms[$player]}; do
-                             echo "($i - ${avg_rtt[$player]})^2"|bc
-                         done)"
-        diff_avg[$player]="$(average ${diff[$player]})"
-        jitter[$player]="$(printf "%1.3f" $(echo "sqrt(${diff_avg[$player]})"|bc))"
-        n=0
-        while IFS=,  read _ land _ ; do
-            ((n++))
-            if [ $n -eq 1 ]; then
-                country[$player]="${land/[[:space:]]/}"
-                break
+    local t
+    read t < $shm/$1
+    trace_ms[$1]="$t"
+    avg_rtt[$1]="$(printf "%1.3f" $(average ${trace_ms[$1]}))"
+    diff[$1]="$(for i in ${trace_ms[$1]}; do
+                    echo "($i - ${avg_rtt[$1]})^2"|bc
+                done)"
+    diff_avg[$1]="$(average ${diff[$1]})"
+    jitter[$1]="$(printf "%1.3f" $(echo "sqrt(${diff_avg[$1]})"|bc))"
+    mpm[$1]=$(printf "%1.0f" $(echo "(${user_dist[$1]}*2)/${avg_rtt[$1]}"|bc)) 
+}
+distances ()
+{
+    local i j refs distances increment d player
+    # Perform distance calculations for each unique pair
+    declare -A distances
+    refs=(${!client[@]})
+    user_ref=${refs[-1]}
+    # Iterate over all player references except last
+    for i in $(seq 0 $(($user_ref-1))); do
+        player=${client[$i]}
+        increment=$((i+1))
+        # Calculate only from next reference to the end
+        for j in ${refs[@]:$increment}; do
+            target=${client[$j]}
+            haversine $player $target
+            distances[$i,$j]=$dist
+            if [ $i -eq 0 ]; then
+                host_dist[$target]=$dist
             fi
-        done < $location
-        city[$player]="$(regions 6)"
-        state[$player]="$(regions 7)"
-        while read ref org; do
-            if [[ ${country[$player]} == "United States" ||
-                    ${country[$player]} == "Canada" ]]; then
-                if [[ $ref == "CustName:" || $ref == "OrgName:" ]]; then
-                    isp[$player]="$org"
-                    break
-                fi
-            elif [[ $ref == "descr:" || $ref == "owner:" ]]; then
-                isp[$player]="$org"
-                break
+            if [ $j -eq $user_ref ]; then
+                user_dist[$player]=$dist
             fi
-        done < <(whois $player)
-        [[ ! ${isp[$player]} ]] && isp[$player]="N/A"
-        tudes $pub_ip $player
-        haversine
-        ((my_dist+=$d))
-        avg_mpm[$player]=$(printf "%1.0f" $(echo "($d*2)/${avg_rtt[$player]}"|bc))
-        total_d=0
-        for l in ${client[@]/$player/} $pub_ip; do
-            tudes $l $player
-            haversine
-            ((total_d+=$d))
         done
-        total_dist[$player]=$total_d
     done
-    avg_jitter=$(printf "%1.3f" $(average ${jitter[@]}))
-    avg_avg_mpm=$(printf "%1.0f" $(average ${avg_mpm[@]}))
-    total_dist[$pub_ip]=$dist
-    for player in ${client[@]/$host/} $pub_ip; do
-        tudes $player $host
-        haversine
-        host_dist[$player]=$d
+    # Add up total distance for each player
+    for i in ${!client[@]}; do
+        player=${client[$i]}
+        if [ $i -eq 0 ]; then
+            total_dist[$player]=$(total ${host_dist[@]})
+            continue
+        fi
+        total_dist[$player]=0
+        for j in ${!distances[@]}; do
+            if [[ $j == *"$i"* ]]; then
+                ((total_dist[$player]+=${distances[$j]}))
+            fi
+        done
     done
 }
 if [ $players -gt 0 ]; then
-    trap control_c SIGINT
-    while IFS=. read f1 f2 f3 _; do
+    trap controlC SIGINT
+
+    # Find LAN subnet and interface
+    while IFS=. read -r f1 f2 f3 _; do
         lan_sub="$f1.$f2.$f3"
     done <<< "$xbox"
-    while read line; do
+    while read -r line; do
         if [[ $line =~ $lan_sub ]]; then
             read _ lan_if _ <<< "$line"
         fi
     done < <(ip -o addr show)
+
+    # Ascii color codes
     col="\x1b["
     end="\x1b[0m"
     green="1;32"
-    blackbg="40m"
     underline="4m"
     bold="1m"
-    printf "Waiting for Host to be detected\n"
+
     [ ! -d "$shm" ] && mkdir $shm
+
+    echo "Waiting for Host to be detected"
+    arr=('|' '/' '-' '\ ')
     while [ ! -f "$shm/fin1" ]; do
-        wheel
+        wheel "${arr[@]}"
     done &
     pids=($!)
+
+    # Reset packet counters
     $conn -D -p udp -s $xbox --sport $xport &>$null
     $conn -D -p udp -d $wan_ip --dport $nat_port &>$null
     sleep 15
+
+    # Wait for enough packets to transfer
     track pack
-    while [ $max_pack -lt 700 ]; do
+    while [ $max_pack -lt 725 ]; do
         sleep 3
         track pack
     done &
     pids+=($!)
+
+    # Capture packets unique to host
     $cap -c 4 -vvv -i $lan_if udp port $xport and \
         length = 306 or length = 146 and not host 65.55 and \
-        not host 65.59 -w $g_cap &> $null &
+        not host 65.59 -w $host_cap &> $null &
     pids+=($!)
+
     wait ${pids[1]}
+
+    # Check for user host
     track count
     p_num=0
     for i in ${c_pack[@]}; do
-        if [ $i -gt 550 ]; then
+        if [ $i -gt 625 ]; then
             ((p_num++))
         fi
     done
     if [ $p_num -gt 0 ]; then
         h_bool=$(echo "${#c_pack[@]}/$p_num <= 1.5"|bc)
         if [ $h_bool -eq 1 ]; then
-            printf "You Have Host! Have fun!\n"
-            proc_kill
+            echo -e "You Have Host"
+            procKill
             exit 0
         fi
     fi
     wait ${pids[2]}
-    # Capture heartbeat packets to eliminate false positives
+
+    # Capture heartbeat packets unique to players
     $cap -c 38 -vvv -i $lan_if udp port $xport and length = 66 \
-        or length = 68 -w $g_cap1 &> $null
-    host=$(dump_read $g_cap 0)
-    client=($host $(dump_read $g_cap1|sort -u))
-    echo 1 > $shm/fin1  
-    wait ${pids[0]}
-    rm $shm/fin1
+        or length = 68 -w $client_cap &> $null
+
     pub_ip=$(curl -4 icanhazip.com 2>$null)
-    tudes $pub_ip
-    wan_lat="$lat1"
-    wan_long="$long1"
-    printf "Testing latency\n"
+
+    # Create list of players
+    host=$(dumpRead $host_cap)
+    client=($host $(dumpRead $client_cap|sort -u) $pub_ip)
+
+    finishedBG fin1 ${pids[0]}
+
+    echo "Testing latency"
+    arr=('|>    |' '|=>   |' '|==>  |' '|===> |' '|====>|'
+         '|    <|' '|   <=|' '|  <==|' '| <===|' '|<====|')
     while [ ! -f "$shm/fin2" ]; do
-        wheel2
+        wheel "${arr[@]}"
     done &
     pids+=($!)
-    for player in ${client[@]}; do
-        traceout > $shm/$player &
+
+    # Run parallel traceroutes
+    sans_user=(${client[@]%${client[-1]}})
+    for player in ${sans_user[@]}; do
+        traceOut > $shm/$player &
         trace_pids+=($!)
     done
     wait ${trace_pids[@]}
+
     declare -A trace_ms avg_rtt diff diff_avg jitter \
-               country city state isp avg_mpm total_dist host_dist
-    getData
-    echo 1 > $shm/fin2
-    wait ${pids[3]}
-    rm $shm/fin2
+               country city state isp mpm user_dist \
+               total_dist host_dist lat long
+    regions ${client[@]}
+    distances
+    for player in ${sans_user[@]}; do
+        ispFind $player
+        latency $player
+    done
+    avg_jitter=$(printf "%1.3f" $(average ${jitter[@]}))
+    avg_mpm=$(printf "%1.0f" $(average ${mpm[@]}))
+
+    finishedBG fin2 ${pids[3]}
+
+    # Print and save temporary report
     date_time="$(date +%m-%d-%Y-%H.%M)"
     file="/tmp/hostcheck.$date_time"
-    info_call|tee "$file"
-    printf "\nA copy of this report is saved at '$file'\n"
+    infoCall ${client[@]}|tee "$file"
+    echo -e "\nA copy of this report is saved at '$file'"
+
     disconnect
+    rm -rf $shm
 else
-    printf "Please wait to be matched in a game\n"
+    echo "Please wait to be matched in a game"
     exit 1
 fi
 exit 0
