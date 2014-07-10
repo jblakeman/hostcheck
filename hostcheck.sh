@@ -10,7 +10,6 @@ shm=/dev/shm/host
 null=/dev/null
 host_cap=$shm/h.pcap
 client_cap=$shm/c.pcap
-location=$shm/geo
 
 if [ $EUID -ne 0 ]; then
     echo "This script must be run as root"
@@ -34,7 +33,12 @@ done < <($conn -L -p udp 2>$null)
 
 # Enable conntrack packet counter 
 acct=/proc/sys/net/netfilter/nf_conntrack_acct
-[ $(< $acct) -ne 1 ] && echo 1 > $acct
+if [ $(< $acct) -ne 1 ]; then
+    echo 1 > $acct
+    echo "Enabling netfilter's packet counter"
+    conntrack -D -p udp
+    sleep 3
+fi
 
 d="[0-9]"
 track ()
@@ -99,6 +103,7 @@ controlC ()
 finishedBG ()
 {
     # Signal end of process by creating file in shared memory
+
     local shared
     shared=$shm/$1
     echo 1 > $shared
@@ -146,6 +151,7 @@ disconnect ()
 haversine ()
 {
     # Find distance between two points on the globe
+
     local pi rad d_lat d_long a b
     pi=$(echo "4*a(1)"|bc -l)
     radians=$(echo "$pi/180"|bc -l)
@@ -173,6 +179,7 @@ info ()
 infoCall ()
 {
     # Output statistics for each player
+
     local n player
     n=1
     for player; do
@@ -182,7 +189,8 @@ infoCall ()
         elif [[ $player != $pub_ip ]]; then
             echo -e "\n$col${bold}Player $n$end\n"
             info $player
-            echo -e "\t$col${underline}Host Distance$end:     $col$bold${host_dist[$player]}$end miles"
+            echo -e "\t$col${underline}Host Distance$end:     ${host_dist[$player]} miles"
+            echo -e "\t$col${underline}User Distance$end:     ${user_dist[$player]} miles"
             ((n++))
         else
             echo -e "\n$col${bold}User$end\n"
@@ -195,7 +203,7 @@ infoCall ()
 }
 average ()
 {
-    local sum value
+    local sum i
     sum=0
     for i; do
         sum=$(echo "$i+$sum"|bc -l)
@@ -213,6 +221,7 @@ total (){
 traceOut ()
 {
     # Output traceroute latency to furthest hop
+
     local trace i
     trace=()
     while read -ra line; do
@@ -231,7 +240,8 @@ traceOut ()
 }
 dumpRead ()
 {
-    # Parse tcpdump results for player IP addresses
+    # Parse tcpdump for player IP addresses
+
     local i d3 ip
     d3="$d{1,3}"
     ip="$d3\.$d3\.$d3\.$d3"
@@ -251,7 +261,7 @@ regions ()
 {
     local player
     for player; do
-        # Parse geoiplookup results for location data
+        # Parse geoiplookup for location data
         local n re
         n=0
         re="[-0-9\.]{8,11}"
@@ -306,15 +316,18 @@ latency ()
 }
 distances ()
 {
-    local i j refs distances increment d player
     # Perform distance calculations for each unique pair
+
+    local i j refs distances increment player target
     declare -A distances
     refs=(${!client[@]})
     user_ref=${refs[-1]}
+
     # Iterate over all player references except last
-    for i in $(seq 0 $(($user_ref-1))); do
+    for i in ${refs[@]:0:$user_ref}; do
         player=${client[$i]}
         increment=$((i+1))
+
         # Calculate only from next reference to the end
         for j in ${refs[@]:$increment}; do
             target=${client[$j]}
@@ -328,13 +341,10 @@ distances ()
             fi
         done
     done
+    
     # Add up total distance for each player
-    for i in ${!client[@]}; do
+    for i in ${refs[@]:1}; do
         player=${client[$i]}
-        if [ $i -eq 0 ]; then
-            total_dist[$player]=$(total ${host_dist[@]})
-            continue
-        fi
         total_dist[$player]=0
         for j in ${!distances[@]}; do
             if [[ $j == *"$i"* ]]; then
@@ -342,18 +352,16 @@ distances ()
             fi
         done
     done
+    total_dist[$host]=$(total ${host_dist[@]})
 }
 if [ $players -gt 0 ]; then
     trap controlC SIGINT
 
     # Find LAN subnet and interface
-    while IFS=. read -r f1 f2 f3 _; do
-        lan_sub="$f1.$f2.$f3"
-    done <<< "$xbox"
-    while read -r line; do
-        if [[ $line =~ $lan_sub ]]; then
-            read _ lan_if _ <<< "$line"
-        fi
+    IFS=. read -r f1 f2 f3 _ <<< "$xbox"
+    lan_sub="$f1.$f2.$f3"
+    while read -ra line; do
+        [[ ${line[3]} == "$lan_sub"* ]] && lan_if=${line[1]}
     done < <(ip -o addr show)
 
     # Ascii color codes
@@ -367,7 +375,7 @@ if [ $players -gt 0 ]; then
 
     echo "Waiting for Host to be detected"
     arr=('|' '/' '-' '\ ')
-    while [ ! -f "$shm/fin1" ]; do
+    until [ -f "$shm/fin1" ]; do
         wheel "${arr[@]}"
     done &
     pids=($!)
@@ -426,13 +434,14 @@ if [ $players -gt 0 ]; then
     echo "Testing latency"
     arr=('|>    |' '|=>   |' '|==>  |' '|===> |' '|====>|'
          '|    <|' '|   <=|' '|  <==|' '| <===|' '|<====|')
-    while [ ! -f "$shm/fin2" ]; do
+    until [ -f "$shm/fin2" ]; do
         wheel "${arr[@]}"
     done &
     pids+=($!)
 
     # Run parallel traceroutes
     sans_user=(${client[@]%${client[-1]}})
+        
     for player in ${sans_user[@]}; do
         traceOut > $shm/$player &
         trace_pids+=($!)
