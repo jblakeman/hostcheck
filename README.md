@@ -2,11 +2,7 @@ Host Check
 ==========
 Get latency and distance information of players in peer hosted Xbox Live matchmaking.
 
-Developed for Linux Servers (Debian based) routing Xbox Live traffic.	
-
-Tested using Ubuntu and Debian, but should work on other Linux distros with some slight modifications.
-
-For guides on how to turn machines running Ubuntu into routers, [use google](https://www.google.com/#q=ubuntu+as+a+router).
+Developed for Ubuntu or Debian servers routing Xbox Live traffic.	
 
 Features
 --------
@@ -21,10 +17,11 @@ Additional Software Requirements
 1. conntrack
 2. traceroute
 3. geoiplookup
+4. whois
 
 #### Install Packages
 
-	sudo apt-get install conntrack traceroute geoip-bin -y
+	sudo apt-get install conntrack traceroute geoip-bin whois -y
 
 #### Download GeoLiteCity database
 
