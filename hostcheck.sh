@@ -1,16 +1,5 @@
 #!/bin/bash
 
-ipt=$(which iptables)
-tracert=$(which traceroute)
-conn=$(which conntrack)
-ip=$(which ip)
-cap=$(which tcpdump)
-geo=$(which geoiplookup)
-tmp=/tmp/host
-null=/dev/null
-host_cap=$tmp/host.pcap
-client_cap=$tmp/client.pcap
-
 . "$(dirname "$(readlink -f "$0")")"/host_env
 if [ $EUID -ne 0 ]; then
     string="This script needs to capture raw packets, "
