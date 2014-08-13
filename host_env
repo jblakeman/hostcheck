@@ -1,14 +1,26 @@
 #!/bin/bash
-ipt=$(which iptables)
-tracert=$(which traceroute)
-conn=$(which conntrack)
-ip=$(which ip)
-cap=$(which tcpdump)
-geo=$(which geoiplookup)
+
+IPT=$(which iptables)
+TRACERT=$(which traceroute)
+CONN=$(which conntrack)
+IP=$(which ip)
+CAP=$(which tcpdump)
+GEO=$(which geoiplookup)
+
 tmp=/tmp/host
 null=/dev/null
 host_cap=$tmp/host.pcap
 client_cap=$tmp/client.pcap
+
+# Ascii color codes
+col="\x1b["
+end="\x1b[0m"
+green="1;32"
+underline="4m"
+bold="1m"
+
+d="[0-9]"
+yorn="Please answer yes or no"
 
 track ()
 {
@@ -22,7 +34,7 @@ track ()
                 ! $line == *"src=65.55."* ]]; then
             [[ $line =~ packets=($d+) ]] && player_packets+=(${BASH_REMATCH[1]})
         fi
-    done < <(sudo $conn -L -p udp 2>$null)
+    done < <(sudo $CONN -L -p udp 2>$null)
     if [[ $1 == pack ]]; then
         max_packets=${player_packets[0]}
         for i in ${player_packets[@]/$max_packets/}; do
@@ -67,14 +79,13 @@ wheel ()
         sleep ".15"
     done
 }
-yorn="Please answer yes or no"
 unban ()
 {
     local yn
     read -p "Unblock Host after disconnect? (Yy|Nn) " yn
         case $yn in
             [Yy]*)
-                { sleep 20 && ip rule del from $xbox to $host blackhole; } &
+                { sleep 20 && sudo $IP rule del from $xbox to $host blackhole; } &
                 pids+=($!)
                 ;;
             [Nn]*);;
@@ -89,7 +100,7 @@ disconnect ()
     read -p "Disconnect from Host? (Yy|Nn) " yn
         case $yn in
             [Yy]*)
-                ip rule add from $xbox to $host blackhole
+                sudo $IP rule add from $xbox to $host blackhole
                 unban;;
             [Nn]*);;
             *)
@@ -171,7 +182,6 @@ traceOut ()
     # Output traceroute latency to furthest hop
 
     local trace i
-    trace=()
     while read -ra line; do
         # Don't match dropped hops or unreachable messages
         if [[ ${line[@]} != *"*"* && ${line[@]} != *"!"* ]]; then
@@ -183,7 +193,7 @@ traceOut ()
                 fi
             done
         fi
-    done < <(sudo $tracert $player -q 3 -n -f 5 -m 25)
+    done < <(sudo $TRACERT $player -q 3 -n -f 5 -m 25)
     echo "${trace[@]}"
 }
 dumpRead ()
@@ -203,7 +213,7 @@ dumpRead ()
                 fi
             fi
         done
-    done < <(sudo $cap -n -r $1 2>$null)
+    done < <(sudo $CAP -n -r $1 2>$null)
 }
 regions ()
 {
@@ -228,7 +238,7 @@ regions ()
                 long[$player]=${BASH_REMATCH[2]}
                 break
             fi
-        done < <($geo $player)
+        done < <($GEO $player)
     done
 }
 ispFind ()

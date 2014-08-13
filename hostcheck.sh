@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 . "$(dirname "$(readlink -f "$0")")"/host_env
 if [ $EUID -ne 0 ]; then
-    string="This script needs to capture raw packets, "
-    string+="and requires sudoer privileges."
-    echo $string
+    string="'$0' is asking to capture raw packets.\n"
+    string+="Sudoer password required."
+    echo -e $string
 fi
 
 # Find Xbox Live connection track
@@ -22,18 +22,17 @@ while read -r line; do
         live=(${live[@]})
         break
     fi
-done < <(sudo -k $conn -L -p udp 2>$null)
+done < <(sudo -k $CONN -L -p udp 2>$null)
 
 # Enable conntrack packet counter if disabled
 acct=/proc/sys/net/netfilter/nf_conntrack_acct
 if [ $(< $acct) -ne 1 ]; then
     sudo echo 1 > $acct
     echo "Enabling netfilter's packet counter"
-    sudo conntrack -D -p udp
+    sudo $CONN -D -p udp &>/dev/null
     sleep 3
 fi
 
-d="[0-9]"
 if ! [[ ${live[0]} ]]; then
     echo "You are not connected to Xbox Live"
     exit 1
@@ -50,7 +49,7 @@ else
         nat_port=${live[3]}
 
     fi
-    track count
+    track
 fi
 if [ ${#player_packets} -gt 0 ]; then
     trap controlC SIGINT
@@ -62,13 +61,6 @@ if [ ${#player_packets} -gt 0 ]; then
         [[ ${line[3]} == "$lan_sub"* ]] && lan_if=${line[1]}
     done < <(ip -o addr show)
 
-    # Ascii color codes
-    col="\x1b["
-    end="\x1b[0m"
-    green="1;32"
-    underline="4m"
-    bold="1m"
-
     [[ ! -d $tmp ]] && mkdir $tmp
 
     echo "Waiting for Host to be detected"
@@ -79,8 +71,8 @@ if [ ${#player_packets} -gt 0 ]; then
     pids=($!)
 
     # Reset packet counters
-    sudo $conn -D -p udp -s $xbox --sport $xport &>$null
-    sudo $conn -D -p udp -d $wan_ip --dport $nat_port &>$null
+    sudo $CONN -D -p udp -s $xbox --sport $xport &>$null
+    sudo $CONN -D -p udp -d $wan_ip --dport $nat_port &>$null
     sleep 15
 
     # Wait for enough packets to transfer
@@ -92,7 +84,7 @@ if [ ${#player_packets} -gt 0 ]; then
     pids+=($!)
 
     # In the background, capture packets unique to host
-    sudo $cap -c 4 -vvv -i $lan_if udp port $xport and \
+    sudo $CAP -c 4 -vvv -i $lan_if udp port $xport and \
         length = 306 or length = 146 and not host 65.55 and \
         not host 65.59 -w $host_cap 2>$null &
     pids+=($!)
@@ -100,7 +92,7 @@ if [ ${#player_packets} -gt 0 ]; then
     wait ${pids[1]}
 
     # Check for user host
-    track count
+    track
     packet_num=0
     for i in ${packets[@]}; do
         if [ $i -gt 625 ]; then
@@ -118,7 +110,7 @@ if [ ${#player_packets} -gt 0 ]; then
     wait ${pids[2]}
 
     # Capture heartbeat packets unique to players
-    $cap -c 38 -vvv -i $lan_if udp port $xport and length = 66 \
+    sudo $CAP -c 38 -vvv -i $lan_if udp port $xport and length = 66 \
         or length = 68 -w $client_cap 2>$null
 
     pub_ip=$(curl -4 icanhazip.com 2>$null)
@@ -139,7 +131,7 @@ if [ ${#player_packets} -gt 0 ]; then
     done &
     pids+=($!)
 
-    # Run parallel traceroutes
+    # Run parallel traceroutes to each player
     sans_user=(${players[@]%${players[-1]}})
         
     for player in ${sans_user[@]}; do
