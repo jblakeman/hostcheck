@@ -6,6 +6,7 @@ CONN=$(which conntrack)
 IP=$(which ip)
 CAP=$(which tcpdump)
 GEO=$(which geoiplookup)
+WHO=$(which whois)
 
 tmp=/tmp/host
 null=/dev/null
@@ -19,32 +20,33 @@ green="1;32"
 underline="4m"
 bold="1m"
 
+servers=(65.55. 65.59.)
 d="[0-9]"
-yorn="Please answer yes or no"
+y_or_n="Please answer yes or no"
 
+list_udp_conn (){
+    sudo $CONN -L -p udp 2>$null
+}
 track ()
 {
-    # Count packets of players
+    # Count number of potential players and max packet count
     local i
-    packets=()
-    while read -r line; do
-        # Don't count packets with Xbox Live IP ranges
-        if [[ $line == *"sport=$xport"* &&
-                ! $line == *"src=65.59."* &&
-                ! $line == *"src=65.55."* ]]; then
-            [[ $line =~ packets=($d+) ]] && player_packets+=(${BASH_REMATCH[1]})
-        fi
-    done < <(sudo $CONN -L -p udp 2>$null)
-    if [[ $1 == pack ]]; then
-        max_packets=${player_packets[0]}
-        for i in ${player_packets[@]/$max_packets/}; do
-            if [ $i -gt $max_packets ]; then
-                max_packets=$i
-            fi
+    player_track=($(
+        awk -v x="sport=$xport" -v s1="src=${servers[0]}" \
+            -v s2="src${servers[1]}" '
+            $0 ~ x && $0 !~ s1 && $0 !~ s2 {
+                sub("packets=","",$8)
+                print $8
+            }' < <(list_udp_conn)
+    ))
+    if [[ $1 == max ]]; then
+        max_packets=${player_track[0]}
+        for i in ${player_track[@]/$max_packets/}; do
+            [ $i -gt $max_packets ] && max_packets=$i
         done
     fi
 }
-procKill ()
+proc_kill ()
 {
     local i
     for i; do
@@ -54,14 +56,14 @@ procKill ()
         fi
     done
 }
-controlC ()
+control_c ()
 {
     echo -e "\rScript interrupted"
     rm -rf $tmp
-    procKill ${pids[@]}
+    proc_kill ${pids[@]}
     exit 1
 }
-finishedBG ()
+finished_bg ()
 {
     # Create temporary file to signal end of process
 
@@ -90,7 +92,7 @@ unban ()
                 ;;
             [Nn]*);;
             *)
-                echo "$yorn"
+                echo "$y_or_n"
                 unban;;
         esac
 }
@@ -104,7 +106,7 @@ disconnect ()
                 unban;;
             [Nn]*);;
             *)
-                echo "$yorn"
+                echo "$y_or_n"
                 disconnect;;
         esac
 }
@@ -135,10 +137,9 @@ info ()
     echo -e "\t$col${underline}Ping Deviation$end:    ${jitter[$1]}$end ms"
     echo -e "\t$col${underline}Total Distance$end:    ${total_dist[$1]}$end miles"
 }
-infoCall ()
+info_call ()
 {
     # Output statistics for each player
-
     local n player
     n=1
     for player; do
@@ -177,26 +178,19 @@ total (){
     done
     echo $sum
 }
-traceOut ()
+trace_out ()
 {
     # Output traceroute latency to furthest hop
-
-    local trace i
-    while read -ra line; do
-        # Don't match dropped hops or unreachable messages
-        if [[ ${line[@]} != *"*"* && ${line[@]} != *"!"* ]]; then
-            trace=()
-            for i in ${line[@]}; do
-                # match time in milliseconds
-                if [[ $i =~ $d+\.$d+ && ! $i =~ $d+\.$d+\. ]]; then
-                    trace+=($i)
-                fi
-            done
-        fi
-    done < <(sudo $TRACERT $player -q 3 -n -f 5 -m 25)
-    echo "${trace[@]}"
+    awk '!/[*\!]/ {
+        for(i=1; i<=NF; i++) 
+            if($i!~/^[0-9]{1,3}\.[0-9]{1,3}$/) 
+                $i=""
+            a=$0
+    }END{
+        print a
+    }' < <(sudo $TRACERT $player -q 3 -n -f 5 -m 25)
 }
-dumpRead ()
+dump_read ()
 {
     # Parse tcpdump for player IP addresses
 
@@ -218,7 +212,7 @@ dumpRead ()
 regions ()
 {
     local player n re
-    re="[-0-9\.]{8,11}" 
+    points="[-0-9\.]{8,11}" 
     for player; do
         # Parse geoiplookup for location data
         n=0
@@ -233,7 +227,7 @@ regions ()
                     state[$player]="${reg[-7]#[[:space:]]}"
                 fi
             fi
-            if [[ ${reg[@]} =~ ($re)\ ($re) ]]; then
+            if [[ ${reg[@]} =~ ($points)\ ($points) ]]; then
                 lat[$player]=${BASH_REMATCH[1]}
                 long[$player]=${BASH_REMATCH[2]}
                 break
@@ -241,10 +235,12 @@ regions ()
         done < <($GEO $player)
     done
 }
-ispFind ()
+isp_find ()
 {
-    # ISP lookup fields vary by region
+    # Find ISP information
+
     while read ref org; do
+        # ISP lookup fields vary by region
         if [[ ${country[$1]} == "United States" ||
                 ${country[$1]} == "Canada" ]]; then
             if [[ $ref == "CustName:" || $ref == "OrgName:" ]]; then
@@ -255,7 +251,7 @@ ispFind ()
             isp[$1]="$org"
             break
         fi
-    done < <(whois $1)
+    done < <($WHO $1)
     [[ ! ${isp[$1]} ]] && isp[$1]=N/A
 }
 latency ()

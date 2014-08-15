@@ -1,39 +1,35 @@
 #!/usr/bin/env bash
 
-. "$(dirname "$(readlink -f "$0")")"/host_env
+script_dir="$(dirname "$(readlink -f "$0")")"
+. $script_dir/host_env
 if [ $EUID -ne 0 ]; then
-    string="'$0' is asking to capture raw packets.\n"
-    string+="Sudoer password required."
-    echo -e $string
+    echo "'${0##*/}' needs sudoer permission to capture raw packets."
+    error=$(sudo -K 2>&1 1>$null)
+    if [ $? -ne 0 ]; then
+        echo "$error"
+        exit 1
+    fi
 fi
 
 # Find Xbox Live connection track
-while read -r line; do
-    if [[ $line == *"src=65.55."* ]]; then
-        for re in [a-zA-Z] \[\] \= \_; do
-            line=${line//$re/}
-        done
-        live=($line)
+live=($(awk -v s="src=${servers[0]}" '
+        $0 ~ s {
+        gsub(/[^[:digit:].[:space:]]/,"")
+        print $3,$4,$5,$6,$9,$10,$11,$12 
+        exit
+    }' < <(list_udp_conn)
+))
 
-        # Remove unnecessary fields
-        for i in 0 1 6 7 12 13 14 15; do
-            unset live[$i]
-        done
-        live=(${live[@]})
-        break
-    fi
-done < <(sudo -k $CONN -L -p udp 2>$null)
-
-# Enable conntrack packet counter if disabled
+# Enable conntrack packet counter if disabled (default)
 acct=/proc/sys/net/netfilter/nf_conntrack_acct
 if [ $(< $acct) -ne 1 ]; then
     sudo echo 1 > $acct
     echo "Enabling netfilter's packet counter"
-    sudo $CONN -D -p udp &>/dev/null
+    sudo $CONN -D -p udp &>$null
     sleep 3
 fi
 
-if ! [[ ${live[0]} ]]; then
+if [[ ! ${live[0]} ]]; then
     echo "You are not connected to Xbox Live"
     exit 1
 else
@@ -51,8 +47,8 @@ else
     fi
     track
 fi
-if [ ${#player_packets} -gt 0 ]; then
-    trap controlC SIGINT
+if [ ${#player_track} -gt 0 ]; then
+    trap control_c SIGINT
 
     # Find LAN subnet and interface
     IFS=. read -r f1 f2 f3 _ <<< "$xbox"
@@ -73,13 +69,11 @@ if [ ${#player_packets} -gt 0 ]; then
     # Reset packet counters
     sudo $CONN -D -p udp -s $xbox --sport $xport &>$null
     sudo $CONN -D -p udp -d $wan_ip --dport $nat_port &>$null
-    sleep 15
 
     # Wait for enough packets to transfer
-    track pack
-    while [ $max_packets -lt 725 ]; do
+    sleep 15
+    while track max && [ $max_packets -lt 725 ]; do
         sleep 3
-        track pack
     done &
     pids+=($!)
 
@@ -95,15 +89,13 @@ if [ ${#player_packets} -gt 0 ]; then
     track
     packet_num=0
     for i in ${packets[@]}; do
-        if [ $i -gt 625 ]; then
-            ((packet_num++))
-        fi
+        [ $i -gt 625 ] && ((packet_num++))
     done
     if [ $packet_num -gt 0 ]; then
         host_bool=$(echo "${#packets[@]}/$packet_num <= 1.5"|bc)
         if [ $host_bool -eq 1 ]; then
             echo -e "You Have Host"
-            procKill
+            proc_kill
             exit 0
         fi
     fi
@@ -114,13 +106,18 @@ if [ ${#player_packets} -gt 0 ]; then
         or length = 68 -w $client_cap 2>$null
 
     pub_ip=$(curl -4 icanhazip.com 2>$null)
+    if [[ ! $pub_ip ]]; then
+        pub_ip=$(curl -4 checkip.dyndns.org 2>/dev/null)
+        pub_ip=${pub_ip#*:}
+        pub_ip=${pub_ip%%<*}
+    fi
 
     # Create list of players
-    host=$(dumpRead $host_cap)
-    players=($host $(dumpRead $client_cap|sort -u) $pub_ip)
+    host=$(dump_read $host_cap)
+    players=($host $(dump_read $client_cap|sort -u) $pub_ip)
 
     # Send finished signal to wheel process
-    finishedBG fin1 ${pids[0]}
+    finished_bg fin1 ${pids[0]}
 
     # Start latency wheel
     echo "Testing latency"
@@ -132,10 +129,10 @@ if [ ${#player_packets} -gt 0 ]; then
     pids+=($!)
 
     # Run parallel traceroutes to each player
-    sans_user=(${players[@]%${players[-1]}})
+    sans_user=(${players[@]/$pub_ip/})
         
     for player in ${sans_user[@]}; do
-        traceOut > $tmp/$player &
+        trace_out > $tmp/$player &
         trace_pids+=($!)
     done
     wait ${trace_pids[@]}
@@ -143,21 +140,22 @@ if [ ${#player_packets} -gt 0 ]; then
     declare -A trace_ms avg_rtt diff diff_avg jitter \
                country city state isp mpm user_dist \
                total_dist host_dist lat long
+
     regions ${players[@]}
     distances
     for player in ${sans_user[@]}; do
-        ispFind $player
+        isp_find $player
         latency $player
     done
     avg_jitter=$(printf "%1.3f" $(average ${jitter[@]}))
     avg_mpm=$(printf "%1.0f" $(average ${mpm[@]}))
 
-    finishedBG fin2 ${pids[3]}
+    finished_bg fin2 ${pids[3]}
 
     # Print and save temporary report
     date_time="$(date +%m-%d-%Y-%H.%M)"
     file="/tmp/hostcheck.$date_time"
-    infoCall ${players[@]}|tee "$file"
+    info_call ${players[@]}|tee "$file"
     echo -e "\nA copy of this report is saved at '$file'"
 
     disconnect
@@ -166,4 +164,5 @@ else
     echo "Please wait to be matched in a game"
     exit 1
 fi
+
 exit 0
