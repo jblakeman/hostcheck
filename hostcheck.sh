@@ -1,36 +1,40 @@
 #!/usr/bin/env bash
 
 script_dir="$(dirname "$(readlink -f "$0")")"
-. $script_dir/host_env
+source $script_dir/host_env
+
 if [ $EUID -ne 0 ]; then
     echo "'${0##*/}' needs sudoer permission to capture raw packets."
-    error=$(sudo -K 2>&1 1>$null)
-    if [ $? -ne 0 ]; then
-        echo "$error"
+    if ! is_sudoer; then
+        echo "Sorry, user $USER may not run sudo on $(hostname)."
+        exit 1
+    else
+        echo "please run script as super user (root)"
         exit 1
     fi
 fi
 
-# Find Xbox Live connection track
+# Enable conntrack packet counter if disabled (default)
+acct=/proc/sys/net/netfilter/nf_conntrack_acct
+if [ $(< $acct) -ne 1 ]; then
+    echo 1 > $acct
+    echo "Enabling netfilter's packet counter"
+    sleep 2
+    $CONN -D -p udp &>$null
+    sleep 5
+fi
+
+# Find IPs and ports from Xbox Live connection track
 live=($(awk -v s="src=${servers[0]}" '
-        $0 ~ s {
+    $0 ~ s {
         gsub(/[^[:digit:].[:space:]]/,"")
         print $3,$4,$5,$6,$9,$10,$11,$12 
         exit
     }' < <(list_udp_conn)
 ))
 
-# Enable conntrack packet counter if disabled (default)
-acct=/proc/sys/net/netfilter/nf_conntrack_acct
-if [ $(< $acct) -ne 1 ]; then
-    sudo echo 1 > $acct
-    echo "Enabling netfilter's packet counter"
-    sudo $CONN -D -p udp &>$null
-    sleep 3
-fi
-
-if [[ ! ${live[0]} ]]; then
-    echo "You are not connected to Xbox Live"
+if [[ ! $live ]]; then
+    echo "Not connected to Xbox Live"
     exit 1
 else
     if [[ ${live[1]} == ${live[4]} ]]; then
@@ -43,18 +47,15 @@ else
         xport=${live[6]}
         wan_ip=${live[1]}
         nat_port=${live[3]}
-
     fi
     track
 fi
 if [ ${#player_track} -gt 0 ]; then
-    trap control_c SIGINT
+    trap graceful_exit INT TERM KILL
 
-    # Find LAN subnet and interface
-    IFS=. read -r f1 f2 f3 _ <<< "$xbox"
-    lan_sub="$f1.$f2.$f3"
+    # Find LAN interface
     while read -ra line; do
-        [[ ${line[3]} == "$lan_sub"* ]] && lan_if=${line[1]}
+        [[ ${line[3]} == ${xbox%.*}* ]] && lan_if=${line[1]}
     done < <(ip -o addr show)
 
     [[ ! -d $tmp ]] && mkdir $tmp
@@ -67,8 +68,8 @@ if [ ${#player_track} -gt 0 ]; then
     pids=($!)
 
     # Reset packet counters
-    sudo $CONN -D -p udp -s $xbox --sport $xport &>$null
-    sudo $CONN -D -p udp -d $wan_ip --dport $nat_port &>$null
+    $CONN -D -p udp -s $xbox --sport $xport &>$null
+    $CONN -D -p udp -d $wan_ip --dport $nat_port &>$null
 
     # Wait for enough packets to transfer
     sleep 15
@@ -77,8 +78,8 @@ if [ ${#player_track} -gt 0 ]; then
     done &
     pids+=($!)
 
-    # In the background, capture packets unique to host
-    sudo $CAP -c 4 -vvv -i $lan_if udp port $xport and \
+    # Capture packets unique to host
+    $CAP -c 4 -vvv -i $lan_if udp port $xport and \
         length = 306 or length = 146 and not host 65.55 and \
         not host 65.59 -w $host_cap 2>$null &
     pids+=($!)
@@ -102,12 +103,11 @@ if [ ${#player_track} -gt 0 ]; then
     wait ${pids[2]}
 
     # Capture heartbeat packets unique to players
-    sudo $CAP -c 38 -vvv -i $lan_if udp port $xport and length = 66 \
+    $CAP -c 38 -vvv -i $lan_if udp port $xport and length = 66 \
         or length = 68 -w $client_cap 2>$null
 
-    pub_ip=$(curl -4 icanhazip.com 2>$null)
-    if [[ ! $pub_ip ]]; then
-        pub_ip=$(curl -4 checkip.dyndns.org 2>/dev/null)
+    if ! pub_ip=$(curl -4 --silent icanhazip.com); then
+        pub_ip=$(curl -4 --silent checkip.dyndns.org)
         pub_ip=${pub_ip#*:}
         pub_ip=${pub_ip%%<*}
     fi
@@ -164,5 +164,4 @@ else
     echo "Please wait to be matched in a game"
     exit 1
 fi
-
 exit 0
