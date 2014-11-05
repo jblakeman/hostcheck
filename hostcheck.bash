@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 script_dir="$(dirname "$(readlink -f "$0")")"
-source $script_dir/host_env
+source $script_dir/host_env.bash
 
 if [ $EUID -ne 0 ]; then
     echo "'${0##*/}' needs sudoer permission to capture raw packets."
