@@ -10,7 +10,6 @@ Features
 * Latency measurements to all players (traceroute)
 * Address based location lookups for all players
 * Distance calculations for all players
-* Option to disconnect from host
 
 Additional Software Requirements
 --------------------------------

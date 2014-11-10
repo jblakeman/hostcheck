@@ -96,53 +96,24 @@ wheel ()
         sleep ".15"
     done
 }
-unban ()
-{
-    local yn
-    read -p "Unblock Host after disconnect? (Yy|Nn) " yn
-        case $yn in
-            [Yy]*)
-                { sleep 20 && $IP rule del from $xbox to $host blackhole; } &
-                pids+=($!)
-                ;;
-            [Nn]*);;
-            *)
-                echo "$y_or_n"
-                unban;;
-        esac
-}
-disconnect ()
-{
-    local yn
-    read -p "Disconnect from Host? (Yy|Nn) " yn
-        case $yn in
-            [Yy]*)
-                $IP rule add from $xbox to $host blackhole
-                unban;;
-            [Nn]*);;
-            *)
-                echo "$y_or_n"
-                disconnect;;
-        esac
-}
 haversine ()
 {
     # Find distance between two points on the globe
 
-    local pi radians radius l lat long d_lat d_long a b
+    local pi radians radius l lats longs d_lat d_long a b
     pi=$(echo "4*a(1)"|bc -l)
     radians=$(echo "scale=20; $pi/180"|bc)
     for l in $1 $2; do
-        lat+=($(echo "${lat[$l]}*$radians"|bc))
-        long+=($(echo "${long[$l]}*$radians"|bc))
+        lats+=($(echo "${lat[$l]}*$radians"|bc))
+        longs+=($(echo "${long[$l]}*$radians"|bc))
     done
     radius=$(echo "6371.0072*0.6214"|bc)
-    d_lat=$(echo "${lat[0]} - ${lat[1]}"|bc)
-    d_long=$(echo "${long[0]} - ${long[1]}"|bc)
-    a=$(echo "sqrt(s($d_lat/2)^2+c(${lat[0]})*c(${lat[1]})*s($d_long/2)^2)"|bc -l)
+    d_lat=$(echo "${lats[0]} - ${lats[1]}"|bc)
+    d_long=$(echo "${longs[0]} - ${longs[1]}"|bc)
+    a=$(echo "sqrt(s($d_lat/2)^2+c(${lats[0]})*c(${lats[1]})*s($d_long/2)^2)"|bc -l)
     b=$(awk -v a=$a 'BEGIN{print 2*atan2(a,sqrt(1-a*a));}')
     dist=$(printf "%1.0f" $(echo "$radius*$b"|bc))
-    unset lat long
+    unset lats longs
 }
 info ()
 {

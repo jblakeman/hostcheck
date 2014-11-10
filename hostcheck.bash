@@ -158,7 +158,6 @@ if [ ${#player_track} -gt 0 ]; then
     info_call ${players[@]}|tee "$file"
     echo -e "\nA copy of this report is saved at '$file'"
 
-    disconnect
     rm -rf $tmp
 else
     echo "Please wait to be matched in a game"
