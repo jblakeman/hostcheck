@@ -2,7 +2,10 @@ Host Check
 ==========
 Get latency and distance information of players in peer hosted Xbox Live matchmaking.
 
-Developed for Ubuntu or Debian servers routing Xbox Live traffic.	
+Platform Requirements
+---------------------
+
+Ubuntu or Debian server routing Xbox 360 Xbox Live traffic.
 
 Features
 --------
