@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 
 script_dir="$(dirname "$(readlink -f "$0")")"
-source $script_dir/host_env.bash
+source "$script_dir"/host_env.bash
 
 if [ $EUID -ne 0 ]; then
-    echo "'${0##*/}' needs sudoer permission to capture raw packets."
-    if ! is_sudoer; then
-        echo "Sorry, user $USER may not run sudo on $(hostname)."
-        exit 1
-    else
-        echo "please run script as super user (root)"
-        exit 1
-    fi
+    echo "'${0##*/}' needs super user permission rights to capture raw packets."
+    echo "please run script as super user (root)"
+    exit 1
 fi
 
 # Enable conntrack packet counter if disabled (default)
@@ -50,6 +45,7 @@ else
     fi
     track
 fi
+
 if [ ${#player_track} -gt 0 ]; then
     trap graceful_exit INT TERM KILL
 
@@ -74,7 +70,7 @@ if [ ${#player_track} -gt 0 ]; then
     # Wait for enough packets to transfer
     sleep 15
     while track max && [ $max_packets -lt 725 ]; do
-        sleep 3
+        sleep 1
     done &
     pids+=($!)
 

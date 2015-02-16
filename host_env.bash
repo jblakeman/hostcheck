@@ -24,24 +24,10 @@ servers=(65.55. 65.59.)
 d="[0-9]"
 y_or_n="Please answer yes or no"
 
-is_sudoer (){
-     awk -F: -v u="$USER" '
-        /^sudo/ {
-            for(i=4;i<=NF;i++) {
-                if($i==u) {
-                    f=1
-                    break
-                }
-            }
-        } END {
-            if(!f)
-            exit 1
-    }' /etc/group
-}
-
 list_udp_conn (){
     $CONN -L -p udp 2>$null
 }
+
 track ()
 {
     # Count number of potential players and max packet count
@@ -61,6 +47,7 @@ track ()
         done
     fi
 }
+
 proc_kill ()
 {
     local pid
@@ -71,6 +58,7 @@ proc_kill ()
         fi
     done
 }
+
 graceful_exit ()
 {
     echo -e "\rScript exiting..."
@@ -78,6 +66,7 @@ graceful_exit ()
     proc_kill ${pids[@]}
     exit 1
 }
+
 finished_bg ()
 {
     # Create temporary file to signal end of process
